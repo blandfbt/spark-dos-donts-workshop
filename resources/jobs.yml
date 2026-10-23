@@ -1,0 +1,65 @@
+# Two jobs. Job parameters are pushed to every notebook task as widget values.
+#
+# spark_dos_donts_setup     00_generate_workshop_data   (run once before the workshop)
+# spark_dos_donts_workshop  01_spark_dos_and_donts -> 02_genie_code_challenge_solution
+#                           (optional instructor dry run; participants normally step through 01 by hand)
+
+resources:
+  jobs:
+    spark_dos_donts_setup:
+      name: "Spark Do's & Don'ts - setup (generate sample data)"
+      description: >
+        Creates the workshop schema and raw-files volume, generates the star schema, the wide
+        telemetry table and the narrow telemetry/session tables, and lands raw CSV and Parquet
+        files in the volume. Every table and folder it writes is replaced on rerun.
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      performance_target: ${var.performance_target}
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: fact_rows
+          default: ${var.fact_rows}
+      environments: &workshop_environments
+        - environment_key: serverless
+          spec:
+            environment_version: ${var.environment_version}
+      tasks:
+        - task_key: generate_workshop_data
+          environment_key: serverless
+          notebook_task:
+            notebook_path: ../notebooks/00_generate_workshop_data.py
+
+    spark_dos_donts_workshop:
+      name: "Spark Do's & Don'ts - run the workshop end to end"
+      description: >
+        Runs every Don't/Do pair and the Genie Code challenge solution, and writes the timings to
+        the workshop_scoreboard table. Each Don't is cancelled after dont_timeout_seconds, so a
+        run takes roughly 20 minutes. Requires the setup job.
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      performance_target: ${var.performance_target}
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+        - name: dont_timeout_seconds
+          default: ${var.dont_timeout_seconds}
+      environments: *workshop_environments
+      tasks:
+        - task_key: dos_and_donts
+          environment_key: serverless
+          max_retries: 0  # a retry would rerun every Don't; investigate instead
+          notebook_task:
+            notebook_path: ../notebooks/01_spark_dos_and_donts.py
+        - task_key: genie_code_challenge_solution
+          depends_on:
+            - task_key: dos_and_donts
+          environment_key: serverless
+          notebook_task:
+            notebook_path: ../notebooks/02_genie_code_challenge_solution.py

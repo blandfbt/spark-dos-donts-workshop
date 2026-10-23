@@ -1,0 +1,12 @@
+# Databricks bundle state and local CLI cache
+.databricks/
+
+# Written by the setup job next to the notebooks (workspace-specific)
+notebooks/_workshop_config.json
+
+# OS / editor / Python
+.DS_Store
+__pycache__/
+*.pyc
+.idea/
+.vscode/

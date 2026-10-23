@@ -1,0 +1,64 @@
+# Spark Do's & Don'ts workshop - Apex Motorsports Parts (a fictional company).
+#
+#   databricks bundle deploy -t dev -p <profile> --var="catalog=<catalog>" --var="schema=<schema>"
+#   databricks bundle run    -t dev -p <profile> spark_dos_donts_setup      # generate the data (run once)
+#   databricks bundle run    -t dev -p <profile> spark_dos_donts_workshop   # optional: run the workshop end to end
+#
+# Then open notebooks/01_spark_dos_and_donts in the bundle folder and step through it.
+#
+# Everything runs on serverless compute (environment version 5). The catalog must already
+# exist; the setup job creates the schema and the raw-files volume inside it.
+bundle:
+  name: spark_dos_donts_workshop
+
+include:
+  - resources/*.yml
+
+sync:
+  exclude:
+    - assets/src/**   # SVG sources of the notebook graphics; only the rendered PNGs are needed
+
+variables:
+  catalog:
+    description: Existing Unity Catalog catalog that will hold the workshop schema.
+  schema:
+    description: Schema for all workshop tables and the raw-files volume (created if missing).
+    default: spark_dos_donts
+  fact_rows:
+    description: Rows in fact_orders. 100M makes the Don'ts clearly hurt; 20M is a quick smoke test.
+    default: "100000000"
+  dont_timeout_seconds:
+    description: Each "Don't" cell is cancelled after this many seconds and recorded as timed out.
+    default: "120"
+  environment_version:
+    description: Serverless environment version. 5 or later is required for df.cache().
+    default: "5"
+  performance_target:
+    description: Serverless job performance target (PERFORMANCE_OPTIMIZED or STANDARD).
+    default: PERFORMANCE_OPTIMIZED
+
+targets:
+  # One deployment per participant (or per customer workspace). Development mode prefixes the
+  # job names with "[dev <user>]" and deploys into the user's own .bundle folder.
+  dev:
+    mode: development
+    default: true
+    # Pick the workspace with `-p <cli-profile>`, or uncomment and set it here:
+    # workspace:
+    #   host: https://<your-workspace>.cloud.databricks.com
+    # variables:
+    #   catalog: <your_catalog>
+    #   schema: spark_dos_donts
+
+  # One instructor-owned copy that participants can view (not edit).
+  shared:
+    mode: production
+    # workspace:
+    #   host: https://<your-workspace>.cloud.databricks.com
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    permissions:
+      - user_name: ${workspace.current_user.userName}
+        level: CAN_MANAGE
+      - group_name: users
+        level: CAN_VIEW

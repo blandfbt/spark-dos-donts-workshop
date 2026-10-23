@@ -1,0 +1,1408 @@
+# Databricks notebook source
+# MAGIC %md
+# MAGIC # Spark Do's & Don'ts
+# MAGIC
+# MAGIC **Apex Motorsports Parts** (a fictional company) has 100M order lines in a star schema, a 300-column
+# MAGIC telemetry table from its test program, and partner files landing in a volume. This notebook takes
+# MAGIC the Spark patterns that most often make jobs slow, expensive, wrong or fragile, and runs each one
+# MAGIC **side by side** with the pattern you should use instead.
+# MAGIC
+# MAGIC Every section has the same shape:
+# MAGIC
+# MAGIC | cell | what it shows |
+# MAGIC |---|---|
+# MAGIC | 📖 **topic** (e.g. *6b · Small files*) | what goes wrong under the hood and why, with a diagram where it helps |
+# MAGIC | 🚫 **Don't** | the anti-pattern, run against the real data, timed |
+# MAGIC | ✅ **Do** | the fix: same answer, timed the same way |
+# MAGIC
+# MAGIC Each run prints how long it took, whether it succeeded, and how much the **driver's memory peaked** during
+# MAGIC the cell. That is the notebook's Python process, where `collect()` and `toPandas()` results land. It is
+# MAGIC sampled every 0.25 s, and "no measurable growth" is the expected (good) result whenever the work stays in Spark.
+# MAGIC
+# MAGIC **How the Don'ts stay short and safe**
+# MAGIC * A **Do runs the full workload. A Don't usually runs a slice of the same work** (for example 4% of the
+# MAGIC   orders, or 50 of the 500 dealers), so it finishes in well under a minute. The cell then prints what
+# MAGIC   the **full-size** run would cost: time and, where it matters, driver memory compared with the RAM this
+# MAGIC   driver actually has. That is how the notebook shows "this would crash the driver" without crashing it.
+# MAGIC * As a safety net, a **watchdog cancels a cell's Spark work after `dont_timeout_seconds`** (widget,
+# MAGIC   default 120 s). ⏱️ *timed out* means the real run would take even longer.
+# MAGIC * Every result is **appended to the `workshop_scoreboard` table** as soon as it's measured. If your
+# MAGIC   notebook is restarted or detached halfway through, nothing is lost. Each section starts with
+# MAGIC   a **▶️ resume point** (`%run ./config`) that restores everything the section needs, so you can carry on
+# MAGIC   from any section.
+# MAGIC
+# MAGIC **Before you start**
+# MAGIC 1. The setup job (`Spark Do's & Don'ts - setup`) must have run once.
+# MAGIC 2. Attach **serverless** compute. Use environment version **5** or later (*Environment* side panel); `df.cache()` needs it.
+# MAGIC 3. Leave the `catalog` / `schema` widgets empty to use the values from the setup job, or fill them in.
+# MAGIC
+# MAGIC | # | section | the Don'ts |
+# MAGIC |---|---|---|
+# MAGIC | 1 | Pulling data to the driver | `collect()`, `toPandas()` on everything, `display()` in production |
+# MAGIC | 2 | Repeated actions | `count()`/`display()` after every step, `count() > 0` |
+# MAGIC | 3 | Driver-side loops | one query per key, one `INSERT` per row |
+# MAGIC | 4 | Python UDFs | row-at-a-time Python where a built-in function exists |
+# MAGIC | 5 | Plan bloat | `withColumn` in a loop, `union` in a loop |
+# MAGIC | 6 | Ingesting files | `inferSchema`, small files, re-reading everything every run |
+# MAGIC | 7 | Joins | non-equi range joins, joining on a non-unique key, giant `isin()` lists |
+# MAGIC | 8 | Window functions | a window with no `partitionBy` |
+# MAGIC | 9 | Writing data | `partitionBy` a high-cardinality column, `coalesce(1)` |
+# MAGIC | 10 | Cluster-era habits on serverless | tuning `spark.conf`, `sparkContext`, RDDs |
+# MAGIC | 11 | 🧞 **Genie Code challenge** | a job with many of the anti-patterns at once; ask Genie Code to fix it |
+# MAGIC | 12 | Scoreboard | your latest timing for every scenario |
+# MAGIC
+# MAGIC > **Navigating:** open the notebook's **Table of contents** (☰ icon in the left sidebar) to jump to any section.
+# MAGIC
+# MAGIC > Timings vary with data size, serverless scaling and caching. The Don't usually runs first, so
+# MAGIC > caches tend to favor the Do slightly. The gaps shown here are much larger than that effect.
+
+# COMMAND ----------
+
+# DBTITLE 1,⚙️ Configuration
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,Data overview
+# config defined the shared DataFrames: orders, parts, dealers, customers, customer_history, wide,
+# readings, sessions, plus the net_revenue expression and sample_orders(fraction)
+print(f"fact_orders        {orders.count():>13,} rows")  # answered from Delta metadata - no scan
+print(f"telemetry_wide     {wide.count():>13,} rows x {len(wide.columns)} columns")
+print(f"telemetry_readings {readings.count():>13,} rows")
+display(orders.limit(5))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Where to look when something is slow
+# MAGIC
+# MAGIC Serverless has no Spark UI. Use these instead:
+# MAGIC * **The cell's "See performance" link** (below each cell that ran Spark work). It lists the cell's queries, and each query has a **query profile** that shows rows, bytes and time per operator.
+# MAGIC * **`df.explain()`** to read the plan before running it. Look for `BroadcastNestedLoopJoin`, `CartesianProduct`, `BatchEvalPython`/`ArrowEvalPython` (Python UDFs), and `Exchange SinglePartition`.
+# MAGIC * **`DESCRIBE HISTORY <table>`** for what a write actually did (files and rows written).
+# MAGIC
+# MAGIC 📚 **References:** [Query profile](https://docs.databricks.com/aws/en/sql/user/queries/query-profile) · [Delta table history](https://docs.databricks.com/aws/en/delta/history)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 1 · Pulling data to the driver
+# MAGIC
+# MAGIC ### 1a · `collect()` and Python loops
+# MAGIC
+# MAGIC ![The driver is a single machine](./images/driver_bottleneck.png)
+# MAGIC
+# MAGIC A Spark job is many **executors** working in parallel, plus one **driver**: the single process your
+# MAGIC Python code runs in. `collect()`, `toPandas()` and iterating over a DataFrame copy every row from all
+# MAGIC executors into that one process, and then your Python code processes the rows one CPU core at a time.
+# MAGIC
+# MAGIC * **Memory:** a Python `Row` object costs 10–20x the bytes the same value takes in Parquet. A few
+# MAGIC   GB on disk becomes tens of GB on the driver, the Python process runs out of memory, and the
+# MAGIC   notebook state is lost (*"The Python process exited unexpectedly"*, *"Driver is up but not
+# MAGIC   responsive"*, or `spark.driver.maxResultSize` errors).
+# MAGIC * **Time:** every byte travels over the network to one machine, and the work that follows is
+# MAGIC   single-threaded. Adding serverless capacity does not help, because the bottleneck is the driver.
+# MAGIC * **It only gets worse as the data grows.** Code that works on 1M rows in development fails in production on 100M.
+# MAGIC
+# MAGIC **Rule:** reduce in Spark first (filter, aggregate, `limit`), then bring back only the small result.
+# MAGIC
+# MAGIC To keep the notebook alive, the Don't collects only **4% of `fact_orders`**, and the cell projects
+# MAGIC what the whole table would need. The Do aggregates the **whole** table.
+# MAGIC
+# MAGIC 📚 **References:** [Spark: `collect()` on the driver can run out of memory](https://spark.apache.org/docs/latest/rdd-programming-guide.html#printing-elements-of-an-rdd) · [PySpark `DataFrame.collect`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.collect.html) · [Spark Connect vs. classic Spark](https://docs.databricks.com/aws/en/spark/connect-vs-classic)
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: collect() + Python loop
+# 🚫 DON'T: collect() the rows and do the math in a Python loop (on 4% of the orders)
+def collect_and_loop():
+    rows = sample_orders(0.04).select("quantity", "unit_price", "discount_pct").collect()  # every row -> driver
+    total = 0.0
+    for r in rows:  # single-threaded Python
+        total += r.quantity * r.unit_price * (1 - r.discount_pct)
+    return {"note": f"net revenue {total:,.0f} from {len(rows):,} Row objects held on the driver"}
+
+
+run_timed("1a · collect() rows and aggregate in Python", "Don't", collect_and_loop, fraction=0.04)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: aggregate in Spark
+# ✅ DO: let Spark aggregate the whole table; only one row comes back to the driver
+def aggregate_in_spark():
+    total = orders.select(F.sum(net_revenue)).first()[0]
+    return {"note": f"net revenue {total:,.0f} over all {orders.count():,} rows"}
+
+
+run_timed("1a · collect() rows and aggregate in Python", "Do", aggregate_in_spark)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 1b · `toPandas()` on a wide table
+# MAGIC
+# MAGIC This is a common pattern in notebooks that start as pandas code: pull the table into pandas and pick
+# MAGIC columns there. Delta and Parquet are **columnar** formats, so Spark can read only the columns you
+# MAGIC ask for (*column pruning*). Once the DataFrame is in pandas, all 300 sensor columns have already
+# MAGIC been read, shipped and converted, and you throw 298 of them away.
+# MAGIC
+# MAGIC If you really need pandas (for plotting, or a library that requires it), **select and reduce in
+# MAGIC Spark first** and then call `toPandas()` on the small result.
+# MAGIC
+# MAGIC The Don't converts **10% of the laps** (~100k rows). That's enough to see the cost, and it stays
+# MAGIC interruptible. (The watchdog can cancel the Spark side of `toPandas()`, but not the conversion to pandas
+# MAGIC that runs on the driver afterwards, so a big `toPandas()` can't be stopped cleanly.) The Do uses the full table.
+# MAGIC
+# MAGIC 📚 **References:** [PySpark `toPandas` ("only if the resulting pandas DataFrame is expected to be small")](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.toPandas.html) · [Convert between PySpark and pandas](https://docs.databricks.com/aws/en/pandas/pyspark-pandas-conversion)
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: toPandas() everything
+# 🚫 DON'T: bring the whole wide table to pandas, then pick columns (on 10% of the laps)
+def wide_to_pandas():
+    pdf = wide.where("lap <= 56").toPandas()  # ~100k rows x 300+ columns -> driver
+    result = pdf.groupby("car_id")[["tyre_temp_001", "brake_temp_001"]].mean()
+    return {"note": f"pandas frame {pdf.shape[0]:,} x {pdf.shape[1]} for a {result.shape[0]} x 2 answer"}
+
+
+run_timed("1b · toPandas() a 300-column table to use 2 columns", "Don't", wide_to_pandas, fraction=0.1)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: select + aggregate, then toPandas()
+# ✅ DO: select the columns and aggregate in Spark, then convert the small result
+def select_then_pandas():
+    result = (
+        wide.groupBy("car_id")
+        .agg(F.avg("tyre_temp_001").alias("tyre_temp_001"), F.avg("brake_temp_001").alias("brake_temp_001"))
+        .toPandas()
+    )
+    return {"note": f"pandas frame {result.shape[0]} x {result.shape[1]}"}
+
+
+run_timed("1b · toPandas() a 300-column table to use 2 columns", "Do", select_then_pandas)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 1c · `display()` in production jobs
+# MAGIC
+# MAGIC `display()` is useful while you develop. In a scheduled job, every `display()` is still a Spark
+# MAGIC action. Spark runs the full plan behind it, ships up to 10,000 rows into the job's output, and
+# MAGIC nobody looks at the result. Three things to know:
+# MAGIC
+# MAGIC * `display()` caps the rows it **returns**, not the work. For a plain scan, Spark pushes the limit
+# MAGIC   down and stops early. When the plan has a **join, aggregation or sort**, Spark computes the whole
+# MAGIC   result before it can show the first row.
+# MAGIC * **`limit(10)` doesn't make an aggregation cheap either.** It just returns fewer rows of a result
+# MAGIC   that Spark computed in full.
+# MAGIC * In the timed cells, `display_now(df)` stands in for `display(df)`. It runs the same query and fetches
+# MAGIC   the same up to 10,000 rows, but renders only 100 of them, so the notebook output stays small.
+# MAGIC * For logs, print a **small summary you need anyway** (row counts from the write, see section 2),
+# MAGIC   or put debug output behind a flag that is off in production.
+# MAGIC
+# MAGIC 📚 **References:** [Notebook outputs and results (row limits)](https://docs.databricks.com/aws/en/notebooks/notebook-outputs)
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: display() an expensive DataFrame
+# 🚫 DON'T: display() a full, expensive DataFrame "to check it" inside a pipeline
+dealer_category_revenue = (
+    orders.join(parts, "part_id")
+    .join(dealers, "dealer_id")
+    .groupBy("region", "dealer_name", "category")
+    .agg(F.sum(net_revenue).alias("net_revenue"), F.countDistinct("customer_id").alias("customers"))
+    .orderBy(F.desc("net_revenue"))
+)
+
+# display_now() does exactly the work display() triggers (full query, up to 10,000 rows back) but renders only
+# 100 of them, so the timing is real and the output loads reliably. See config.py.
+run_timed("1c · display() an expensive DataFrame in a job", "Don't", lambda: display_now(dealer_category_revenue))
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: debug flag + small peek
+# ✅ DO: no display() in production code paths; when you need to look, use a debug flag and a small slice
+DEBUG = False  # in a real job, read it from a job parameter, e.g. dbutils.widgets.get("debug") == "true"
+
+
+def guarded_debug_output():
+    if DEBUG:
+        display(dealer_category_revenue.limit(10))
+    # ...and if you really want to log a peek in development, take it from a cheap, narrow plan:
+    orders.select("order_id", "dealer_id", "part_id", "quantity").show(5)
+
+
+run_timed("1c · display() an expensive DataFrame in a job", "Do", guarded_debug_output)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 2 · Repeated actions
+# MAGIC
+# MAGIC ### 2a · Debug actions after every step
+# MAGIC
+# MAGIC ![Every action re-runs the whole lineage](./images/lazy_evaluation.png)
+# MAGIC
+# MAGIC Spark is **lazy**. `join`, `withColumn` and `groupBy` only build a plan. Nothing runs until an **action**
+# MAGIC (`count`, `display`, `collect`, `write`, `toPandas`, ...). Spark does not keep the results of earlier
+# MAGIC actions, so **every action recomputes the plan from the source tables**. A pipeline with four
+# MAGIC "sanity check" `count()`s and `display()`s does the expensive join and aggregation five times.
+# MAGIC
+# MAGIC **Do instead**
+# MAGIC * End the pipeline with **one action**: the write.
+# MAGIC * Get row counts for free from the write's Delta metadata (`DESCRIBE HISTORY` → `operationMetrics`).
+# MAGIC * Look at the result by reading the (small) output table.
+# MAGIC * If you really have to reuse an intermediate result several times in one session, `cache()` it,
+# MAGIC   or write it to a table.
+# MAGIC
+# MAGIC 📚 **References:** [Spark: lazy transformations and actions](https://spark.apache.org/docs/latest/rdd-programming-guide.html#rdd-operations) · [PySpark `DataFrame.cache`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.cache.html) · [Delta history and `operationMetrics`](https://docs.databricks.com/aws/en/delta/history) · [Serverless caching limitations](https://docs.databricks.com/aws/en/compute/serverless/limitations)
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,Pipeline used in this section
+def build_monthly_dealer_revenue():
+    enriched = (
+        orders.join(parts, "part_id")
+        .join(dealers, "dealer_id")
+        .withColumn("net_revenue", net_revenue)
+        .withColumn("margin", F.col("net_revenue") - F.col("quantity") * F.col("unit_cost"))
+    )
+    monthly = enriched.groupBy("region", "dealer_id", F.date_trunc("month", "order_date").alias("month")).agg(
+        F.sum("net_revenue").alias("net_revenue"),
+        F.sum("margin").alias("margin"),
+        F.countDistinct("customer_id").alias("customers"),
+    )
+    return enriched, monthly
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: count()/display() after every step
+# 🚫 DON'T: sprinkle actions through the pipeline to "see what's going on"
+def pipeline_with_debug_actions():
+    enriched, monthly = build_monthly_dealer_revenue()
+    print("enriched rows:", enriched.count())  # action 1: full join
+    display_now(enriched.where("discount_pct >= 0.3").orderBy(F.desc("net_revenue")))  # action 2: join + sort
+    print("monthly rows:", monthly.count())  # action 3: join + aggregation
+    display_now(monthly.orderBy(F.desc("net_revenue")))  # action 4: join + aggregation + sort
+    monthly.write.mode("overwrite").saveAsTable(T("scratch_monthly_dealer_revenue"))  # action 5: ...again
+
+
+run_timed("2a · count()/display() after every pipeline step", "Don't", pipeline_with_debug_actions)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: one write + DESCRIBE HISTORY
+# ✅ DO: one action (the write), then read cheap facts about the result
+def pipeline_single_action():
+    _, monthly = build_monthly_dealer_revenue()
+    monthly.write.mode("overwrite").saveAsTable(T("scratch_monthly_dealer_revenue"))
+
+    last_write = spark.sql(f"DESCRIBE HISTORY {T('scratch_monthly_dealer_revenue')} LIMIT 1").first()
+    rows_written = last_write.operationMetrics["numOutputRows"]  # free: recorded by the write itself
+    display_now(spark.table(T("scratch_monthly_dealer_revenue")).orderBy(F.desc("net_revenue")).limit(10))
+    return {"note": f"{rows_written} rows written (from DESCRIBE HISTORY, no extra scan)"}
+
+
+run_timed("2a · count()/display() after every pipeline step", "Do", pipeline_single_action)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do (alternative): cache() once
+# ✅ DO (alternative): if you must reuse an intermediate result in the same session, cache it once
+def pipeline_with_cache():
+    enriched, _ = build_monthly_dealer_revenue()
+    big_discounts = enriched.where("discount_pct >= 0.3").select("dealer_id", "order_date", "net_revenue").cache()
+    n = big_discounts.count()  # materializes the cache: the join runs once
+    by_dealer = big_discounts.groupBy("dealer_id").agg(F.sum("net_revenue")).count()  # served from cache
+    by_day = big_discounts.groupBy("order_date").agg(F.sum("net_revenue")).count()  # served from cache
+    big_discounts.unpersist()
+    return {"note": f"{n:,} cached rows reused by 2 more actions ({by_dealer} dealers, {by_day} days)"}
+
+
+run_timed("2a · count()/display() after every pipeline step", "Do", pipeline_with_cache,
+          note="(cache variant)")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 2b · `count() > 0` as an existence check
+# MAGIC
+# MAGIC `count()` has to produce **every** row of the DataFrame, so it pays for the whole pipeline
+# MAGIC behind it. To find out whether **any** row exists, use `isEmpty()` (or `limit(1)`). Spark stops as soon
+# MAGIC as it has one row.
+# MAGIC
+# MAGIC The check here is a typical data-quality gate on an expensive pipeline: *did any car exceed 260 km/h
+# MAGIC during a session?* Answering it means labeling 43M telemetry readings with their session, the
+# MAGIC range join from section 7. `count()` runs that whole join. `isEmpty()` stops after the first match.
+# MAGIC
+# MAGIC Two caveats: if nothing matches, both have to look at everything. And `spark.table(...).count()` on
+# MAGIC a plain Delta table is fast anyway, because Delta answers it from metadata.
+# MAGIC
+# MAGIC 📚 **References:** [PySpark `DataFrame.isEmpty`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.isEmpty.html)
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: count() > 0
+speeding_in_session = readings.join(
+    sessions, (readings.car_id == sessions.car_id) & readings.ts.between(sessions.start_ts, sessions.end_ts)
+).where("speed_kph > 260")
+
+
+# 🚫 DON'T: count every match just to learn whether there is one
+def has_rows_with_count():
+    n = speeding_in_session.count()
+    return {"note": f"found = {n > 0} (after counting all {n:,} matches)"}
+
+
+run_timed("2b · count() > 0 to test for existence", "Don't", has_rows_with_count)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: isEmpty()
+# ✅ DO: stop at the first match
+def has_rows_with_is_empty():
+    found = not speeding_in_session.isEmpty()
+    return {"note": f"found = {found}"}
+
+
+run_timed("2b · count() > 0 to test for existence", "Do", has_rows_with_is_empty)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 3 · Driver-side loops
+# MAGIC
+# MAGIC ### 3a · One query per key
+# MAGIC
+# MAGIC ![Loop on the driver vs one distributed query](./images/driver_loop.png)
+# MAGIC
+# MAGIC A `for` loop on the driver that starts a Spark query per key (per dealer, per day, per file) runs those
+# MAGIC queries **one after another**. Each one pays the fixed cost of planning, scheduling and scanning the
+# MAGIC table again. 500 dealers means 500 scans of the same 100M rows. A single `groupBy` reads the data
+# MAGIC once and does all 500 aggregations in parallel.
+
+
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: one query per dealer
+# 🚫 DON'T: loop over keys on the driver and run one query per key (first 50 of the 500 dealers)
+dealer_ids = [r.dealer_id for r in dealers.select("dealer_id").orderBy("dealer_id").collect()]
+loop_dealers = dealer_ids[:50]
+loop_progress = {"done": 0}
+
+
+def revenue_per_dealer_loop():
+    results = {}
+    for dealer_id in loop_dealers:
+        results[dealer_id] = orders.where(F.col("dealer_id") == dealer_id).select(F.sum(net_revenue)).first()[0]
+        loop_progress["done"] += 1
+    return results
+
+
+loop_progress["done"] = 0
+run_timed("3a · one query per dealer in a Python loop", "Don't", revenue_per_dealer_loop,
+          fraction=len(loop_dealers) / len(dealer_ids),
+          detail_fn=lambda s: f"{loop_progress['done']} of {len(loop_dealers)} dealers queried")
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: one groupBy
+# ✅ DO: one groupBy computes every dealer in a single pass
+def revenue_per_dealer_groupby():
+    results = {r.dealer_id: r.net_revenue for r in orders.groupBy("dealer_id").agg(F.sum(net_revenue).alias("net_revenue")).collect()}
+    return {"note": f"{len(results)} dealers in one query (500 small rows collected - that's fine)"}
+
+
+run_timed("3a · one query per dealer in a Python loop", "Do", revenue_per_dealer_groupby)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 3b · One `INSERT` per row
+# MAGIC
+# MAGIC The same applies to writes. One `INSERT INTO ... VALUES` per row is a separate Delta transaction:
+# MAGIC a commit, at least one tiny file and one table version for every row. Build the rows as a DataFrame
+# MAGIC and write them in **one** append, or use `MERGE` for upserts.
+# MAGIC
+# MAGIC 📚 **References:** [Upsert with `MERGE INTO`](https://docs.databricks.com/aws/en/delta/merge) · [Delta Lake best practices](https://docs.databricks.com/aws/en/delta/best-practices)
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: one INSERT per row
+spark.sql(f"""
+  CREATE OR REPLACE TABLE {T('scratch_order_adjustments')} (
+    order_id BIGINT, adjustment DOUBLE, reason STRING, created_at TIMESTAMP)
+""")
+adjustments = [
+    (int(r.order_id), round(-r.unit_price * 0.1, 2), "goodwill credit")
+    for r in orders.where("order_date = '2025-06-01'").select("order_id", "unit_price").limit(300).collect()
+]
+insert_progress = {"done": 0}
+row_by_row = adjustments[:30]
+
+
+# 🚫 DON'T: one INSERT statement (one Delta transaction) per row (the first 30 of 300 rows)
+def insert_row_by_row():
+    for order_id, amount, reason in row_by_row:
+        spark.sql(f"INSERT INTO {T('scratch_order_adjustments')} VALUES ({order_id}, {amount}, '{reason}', current_timestamp())")
+        insert_progress["done"] += 1
+
+
+def insert_detail(seconds):
+    versions = spark.sql(f"DESCRIBE HISTORY {T('scratch_order_adjustments')}").count()
+    return f"{insert_progress['done']} rows inserted · table now has {versions} versions"
+
+
+run_timed("3b · one INSERT per row", "Don't", insert_row_by_row, fraction=len(row_by_row) / len(adjustments),
+          detail_fn=insert_detail)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: one batch append
+# ✅ DO: build a DataFrame and write it once (use MERGE INTO when you need upserts)
+def insert_as_one_batch():
+    batch = spark.createDataFrame(adjustments, "order_id BIGINT, adjustment DOUBLE, reason STRING").withColumn(
+        "created_at", F.current_timestamp()
+    )
+    batch.write.mode("append").saveAsTable(T("scratch_order_adjustments"))
+    return {"note": f"{len(adjustments)} rows in 1 transaction"}
+
+
+run_timed("3b · one INSERT per row", "Do", insert_as_one_batch)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 4 · Python UDFs
+# MAGIC
+# MAGIC ### Python UDFs vs. pandas UDFs vs. built-in functions
+# MAGIC
+# MAGIC ![Python UDF round trip](./images/python_udf.png)
+# MAGIC
+# MAGIC Built-in functions (`F.when`, `F.round`, `F.regexp_extract`, date functions, ...) run inside the engine.
+# MAGIC On Databricks that is **Photon**, which processes them vectorized in native code. A Python UDF is a
+# MAGIC black box to the engine. Every row (or batch, for pandas UDFs) is serialized, sent to a separate
+# MAGIC Python process, evaluated by the interpreter and sent back. The optimizer can't push filters
+# MAGIC through the UDF or reason about its output, and the stage drops out of Photon.
+# MAGIC
+# MAGIC **Order of preference:** built-in functions › SQL expressions › **pandas UDF** (vectorized, batches
+# MAGIC through Arrow) › plain Python UDF. Python UDFs are still the right tool for logic that really
+# MAGIC requires Python (a library call, or a model). Most business logic is `when/otherwise` and arithmetic,
+# MAGIC and that should never be a UDF.
+# MAGIC
+# MAGIC 📚 **References:** [Databricks: user-defined functions (prefer built-ins)](https://docs.databricks.com/aws/en/udf/) · [pandas UDFs](https://docs.databricks.com/aws/en/udf/pandas) · [Spark: Arrow and pandas UDFs](https://spark.apache.org/docs/latest/api/python/tutorial/sql/arrow_pandas.html) · [Photon](https://docs.databricks.com/aws/en/compute/photon)
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: Python UDFs
+from pyspark.sql.functions import pandas_udf, udf
+
+
+@udf("double")
+def net_revenue_udf(quantity, unit_price, discount_pct):
+    return quantity * unit_price * (1 - discount_pct)
+
+
+@udf("string")
+def order_band_udf(quantity, unit_price):
+    value = quantity * unit_price
+    return "Large" if value >= 5000 else ("Medium" if value >= 500 else "Small")
+
+
+# 🚫 DON'T: row-at-a-time Python for arithmetic and if/else (on 30% of the orders)
+def with_python_udfs():
+    rows = (
+        sample_orders(0.3).select(order_band_udf("quantity", "unit_price").alias("band"),
+                      net_revenue_udf("quantity", "unit_price", "discount_pct").alias("net_revenue"))
+        .groupBy("band").agg(F.round(F.sum("net_revenue"), 0).alias("net_revenue"))
+        .collect()
+    )
+    return {"note": str({r.band: r.net_revenue for r in rows})}
+
+
+run_timed("4 · Python UDF instead of built-in functions", "Don't", with_python_udfs, fraction=0.3)
+
+# COMMAND ----------
+
+# DBTITLE 1,🟡 Better: pandas UDFs
+# 🟡 BETTER: a pandas UDF processes Arrow batches instead of single rows (still leaves the engine)
+@pandas_udf("double")
+def net_revenue_pudf(quantity: pd.Series, unit_price: pd.Series, discount_pct: pd.Series) -> pd.Series:
+    return quantity * unit_price * (1 - discount_pct)
+
+
+@pandas_udf("string")
+def order_band_pudf(quantity: pd.Series, unit_price: pd.Series) -> pd.Series:
+    value = quantity * unit_price
+    return pd.Series(np.select([value >= 5000, value >= 500], ["Large", "Medium"], "Small"))
+
+
+def with_pandas_udfs():
+    rows = (
+        orders.select(order_band_pudf("quantity", "unit_price").alias("band"),
+                      net_revenue_pudf("quantity", "unit_price", "discount_pct").alias("net_revenue"))
+        .groupBy("band").agg(F.round(F.sum("net_revenue"), 0).alias("net_revenue"))
+        .collect()
+    )
+    return {"note": str({r.band: r.net_revenue for r in rows})}
+
+
+run_timed("4 · Python UDF instead of built-in functions", "Better", with_pandas_udfs)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: built-in functions
+# ✅ DO: express it with built-in functions; it stays in Photon
+def with_builtins():
+    value = F.col("quantity") * F.col("unit_price")
+    band = F.when(value >= 5000, "Large").when(value >= 500, "Medium").otherwise("Small")
+    rows = (
+        orders.select(band.alias("band"), net_revenue.alias("net_revenue"))
+        .groupBy("band").agg(F.round(F.sum("net_revenue"), 0).alias("net_revenue"))
+        .collect()
+    )
+    return {"note": str({r.band: r.net_revenue for r in rows})}
+
+
+run_timed("4 · Python UDF instead of built-in functions", "Do", with_builtins)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 5 · Plan bloat
+# MAGIC
+# MAGIC ### 5a · `withColumn()` in a loop
+# MAGIC
+# MAGIC ![Loops grow the plan](./images/plan_bloat.png)
+# MAGIC
+# MAGIC Each `withColumn`, `union` or `filter` call wraps the plan in one more layer. In a loop over 300
+# MAGIC columns you end up with a plan 300 layers deep. Spark has to analyze and optimize that plan, and on
+# MAGIC Spark Connect / serverless it also has to send it to the server. Anything in the loop that asks for
+# MAGIC the schema (`df.columns`, `df.schema`, `if c in df.columns`) analyzes the **whole growing plan
+# MAGIC again**, so the cost grows quadratically. Very deep plans can also fail outright with
+# MAGIC stack-overflow or *plan too large* errors.
+# MAGIC
+# MAGIC **Do instead**
+# MAGIC * `df.withColumns({...})` or a single `select([...])` with all the expressions, built in a Python list first.
+# MAGIC * Read a folder of files with **one** `spark.read` (with a glob or partition discovery), not one read per file followed by `union`.
+# MAGIC * Never put an action such as `count()` inside the loop, not even for logging.
+# MAGIC
+# MAGIC 📚 **References:** [PySpark `withColumn` (loops can cause big plans and `StackOverflowException`)](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.withColumn.html) · [Spark Connect: schema analysis on `df.columns`](https://docs.databricks.com/aws/en/spark/connect-vs-classic) · [Parquet partition discovery](https://spark.apache.org/docs/latest/sql-data-sources-parquet.html#partition-discovery)
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: withColumn() in a loop
+sensor_cols = [c for c in wide.columns if c not in ("car_id", "ts", "lap")]
+
+loop_cols = sensor_cols[:200]
+
+
+# 🚫 DON'T: one withColumn per column, with a schema check inside the loop (first 200 columns)
+def fahrenheit_with_loop():
+    df = wide
+    for c in loop_cols:
+        if c in df.columns:  # looks harmless: each call re-analyzes the ever-growing plan
+            df = df.withColumn(c, F.round(F.col(c) * 1.8 + 32, 2))
+    return {"note": f"avg tyre_temp_001 = {df.select(F.avg('tyre_temp_001')).first()[0]:.2f}"}
+
+
+# the cost grows with the square of the column count, so project quadratically
+run_timed(f"5a · withColumn() in a loop over {len(sensor_cols)} columns", "Don't", fahrenheit_with_loop,
+          fraction=len(loop_cols) / len(sensor_cols), scaling="quadratic")
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: withColumns() once
+# ✅ DO: build all expressions first, apply them in one projection
+def fahrenheit_in_one_projection():
+    df = wide.withColumns({c: F.round(F.col(c) * 1.8 + 32, 2) for c in sensor_cols})
+    return {"note": f"avg tyre_temp_001 = {df.select(F.avg('tyre_temp_001')).first()[0]:.2f}"}
+
+
+run_timed(f"5a · withColumn() in a loop over {len(sensor_cols)} columns", "Do", fahrenheit_in_one_projection)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 5b · Reading files one by one with `union`
+# MAGIC
+# MAGIC `raw_files/daily_order_extracts/` has one folder per day (`order_date=2025-01-01/`, ...), the way a
+# MAGIC daily export job delivers data. Reading them in a loop also tends to pick up a `count()` for logging
+# MAGIC on every iteration.
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: read + count + union per folder
+extracts_root = f"{VOLUME}/daily_order_extracts"
+day_folders = sorted(f.path for f in dbutils.fs.ls(extracts_root) if f.name.startswith("order_date="))
+union_progress = {"done": 0}
+
+
+loop_folders = day_folders[:18]
+
+
+# 🚫 DON'T: one read (and one logging count) per folder, then union (first 18 days)
+def read_days_with_union_loop():
+    combined = None
+    for path in loop_folders:
+        day = spark.read.parquet(path).withColumn("order_date", F.lit(path.rstrip("/").split("=")[-1]).cast("date"))
+        _ = day.count()  # "log how many rows we loaded" - one Spark job per folder
+        combined = day if combined is None else combined.unionByName(day)
+        union_progress["done"] += 1
+    rows = combined.groupBy("channel").agg(F.sum("quantity").alias("units")).collect()
+    return {"note": str({r.channel: r.units for r in rows})}
+
+
+union_progress["done"] = 0
+# projected linearly; the growing union plan makes the real cost grow faster than that
+run_timed(f"5b · read {len(day_folders)} folders one by one + union", "Don't", read_days_with_union_loop,
+          fraction=len(loop_folders) / len(day_folders),
+          detail_fn=lambda s: f"{union_progress['done']} of {len(loop_folders)} folders read")
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: one read of the folder
+# ✅ DO: one read of the root; partition discovery turns order_date=... folders into a column
+def read_days_at_once():
+    df = spark.read.parquet(extracts_root)
+    rows = df.groupBy("channel").agg(F.sum("quantity").alias("units")).collect()
+    # need per-day row counts for the log? one more grouped query, not N counts
+    per_day = df.groupBy("order_date").count().count()
+    return {"note": f"{ {r.channel: r.units for r in rows} } · {per_day} days"}
+
+
+run_timed(f"5b · read {len(day_folders)} folders one by one + union", "Do", read_days_at_once)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 6 · Ingesting files
+# MAGIC
+# MAGIC ### 6a · Schema inference
+# MAGIC
+# MAGIC CSV and JSON don't carry types. With `inferSchema=true`, Spark reads the **entire** dataset once
+# MAGIC just to guess the types, and then reads it again to process it. The guess can also be wrong
+# MAGIC (zip codes that lose their leading zeros, IDs inferred as `int` that later overflow, an all-null
+# MAGIC column inferred as `string`), and it can change from one run to the next as the data changes.
+# MAGIC
+# MAGIC **Do:** declare the schema (a DDL string is enough). For ongoing ingestion, use **Auto Loader**
+# MAGIC with `cloudFiles.schemaHints` and schema evolution, which infers types once from a sample and
+# MAGIC tracks changes for you.
+# MAGIC
+# MAGIC 📚 **References:** [Spark CSV options (`inferSchema` needs an extra pass)](https://spark.apache.org/docs/latest/sql-data-sources-csv.html) · [Auto Loader schema inference and hints](https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/schema)
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: inferSchema
+orders_csv = f"{VOLUME}/orders_csv"
+
+
+# 🚫 DON'T: let Spark scan everything to guess the types
+def csv_with_infer_schema():
+    df = spark.read.option("header", True).option("inferSchema", True).csv(orders_csv)
+    total = df.select(F.sum(F.col("quantity") * F.col("unit_price"))).first()[0]
+    return {"note": f"gross {total:,.0f} · inferred: " + ", ".join(f"{f.name}:{f.dataType.simpleString()}" for f in df.schema.fields[:4]) + ", ..."}
+
+
+run_timed("6a · CSV with inferSchema", "Don't", csv_with_infer_schema)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: explicit schema
+# ✅ DO: declare the schema
+ORDERS_CSV_SCHEMA = """
+  order_id BIGINT, order_ts TIMESTAMP, order_date DATE, customer_id BIGINT, dealer_id INT, part_id INT,
+  quantity INT, unit_price DOUBLE, discount_pct DOUBLE, channel STRING, promo_code STRING
+"""
+
+
+def csv_with_schema():
+    df = spark.read.option("header", True).schema(ORDERS_CSV_SCHEMA).csv(orders_csv)
+    total = df.select(F.sum(F.col("quantity") * F.col("unit_price"))).first()[0]
+    return {"note": f"gross {total:,.0f}"}
+
+
+run_timed("6a · CSV with inferSchema", "Do", csv_with_schema)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 6b · Small files
+# MAGIC
+# MAGIC ![Small files vs right-sized files](./images/small_files.png)
+# MAGIC
+# MAGIC `telemetry_small_files` and `telemetry_compacted` contain **exactly the same rows**. The first is 4,000
+# MAGIC files of a few KB each, and the second is 4 files. Every file costs a listing entry, an open, a footer
+# MAGIC read and some scheduling overhead. With tiny files, that overhead is most of the work.
+# MAGIC Small files usually come from streaming micro-batches, `repartition(<too many>)`, over-partitioned
+# MAGIC tables (section 9) and row-by-row inserts (section 3).
+# MAGIC
+# MAGIC **Do:** land files at a reasonable size (100 MB–1 GB). For Delta tables, let **predictive
+# MAGIC optimization** (or a scheduled `OPTIMIZE`) compact them, and turn on optimized writes and auto
+# MAGIC compaction, which serverless and Unity Catalog managed tables do by default.
+# MAGIC
+# MAGIC 📚 **References:** [Control data file size](https://docs.databricks.com/aws/en/delta/tune-file-size) · [Predictive optimization](https://docs.databricks.com/aws/en/optimizations/predictive-optimization)
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: 4,000 tiny files
+def summarize_telemetry(path):
+    rows = (
+        spark.read.parquet(path).groupBy("car_id")
+        .agg(F.max("speed_kph").alias("vmax"), F.avg("oil_temp_c").alias("oil"))
+        .collect()
+    )
+    return {"note": f"{len(rows)} cars summarized"}
+
+
+small_files = spark.sql(f"LIST '{VOLUME}/telemetry_small_files'").where("name LIKE '%.parquet'").count()
+
+# 🚫 DON'T: thousands of tiny files
+run_timed("6b · reading 4,000 tiny files", "Don't", lambda: summarize_telemetry(f"{VOLUME}/telemetry_small_files"),
+          note=f"{small_files:,} parquet files")
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: right-sized files
+# ✅ DO: the same rows in a few right-sized files
+compacted_files = spark.sql(f"LIST '{VOLUME}/telemetry_compacted'").where("name LIKE '%.parquet'").count()
+run_timed("6b · reading 4,000 tiny files", "Do", lambda: summarize_telemetry(f"{VOLUME}/telemetry_compacted"),
+          note=f"{compacted_files:,} parquet files")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 6c · Full reloads vs. incremental ingestion
+# MAGIC
+# MAGIC ![Full reload vs incremental](./images/incremental_ingest.png)
+# MAGIC
+# MAGIC A common first version of an ingestion job is `spark.read.parquet(landing).write.mode("overwrite")`
+# MAGIC on a schedule. It works, but every run re-reads **all** history to pick up today's few new files,
+# MAGIC so cost and run time grow every day. If an upstream folder is ever cleaned up, the overwrite also
+# MAGIC silently deletes data from the bronze table.
+# MAGIC
+# MAGIC **Do:** use **Auto Loader** (`cloudFiles`), or a Lakeflow declarative pipeline built on it. It keeps
+# MAGIC track of which files it has already ingested in a checkpoint and processes only new arrivals. With
+# MAGIC `trigger(availableNow=True)` it runs as a normal batch job and then stops.
+# MAGIC
+# MAGIC The next cell does the **initial load** both ways and then drops one new file into the landing zone.
+# MAGIC The Don't and the Do cells after it time the **second** run, the one that only has to pick up that file.
+# MAGIC
+# MAGIC 📚 **References:** [Auto Loader](https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/) · [Lakeflow Spark Declarative Pipelines](https://docs.databricks.com/aws/en/ldp/)
+
+# COMMAND ----------
+
+# DBTITLE 1,Setup: initial load + one new file
+landing = f"{VOLUME}/orders_landing"
+checkpoint = f"{VOLUME}/_checkpoints/scratch_orders_bronze_incremental"
+landing_schema = spark.read.parquet(landing).schema
+
+
+def full_reload():
+    spark.read.parquet(landing).write.mode("overwrite").saveAsTable(T("scratch_orders_bronze_full"))
+
+
+def incremental_autoloader():
+    query = (
+        spark.readStream.format("cloudFiles")
+        .option("cloudFiles.format", "parquet")
+        .schema(landing_schema)
+        .load(landing)
+        .writeStream.option("checkpointLocation", checkpoint)
+        .trigger(availableNow=True)
+        .toTable(T("scratch_orders_bronze_incremental"))
+    )
+    query.awaitTermination()
+
+
+# Reset the demo: forget previous runs, remove earlier "new arrivals", load once both ways
+for f in dbutils.fs.ls(landing):
+    if f.name.startswith("new_arrival"):
+        dbutils.fs.rm(f.path, True)
+dbutils.fs.rm(checkpoint, True)
+spark.sql(f"DROP TABLE IF EXISTS {T('scratch_orders_bronze_incremental')}")
+t0 = time.perf_counter()
+full_reload()
+incremental_autoloader()
+print(f"Initial load done both ways in {time.perf_counter() - t0:,.0f} s")
+
+# A new day's file arrives in the landing zone (new order_ids so nothing collides)
+(
+    orders.where("order_date = '2025-12-31'").drop("date_key")
+    .withColumn("order_id", F.col("order_id") + 10_000_000_000)
+    .coalesce(1).write.mode("overwrite").parquet(f"{landing}/new_arrival_2026-01-01")
+)
+print("One new file landed:", [f.name for f in dbutils.fs.ls(f"{landing}/new_arrival_2026-01-01") if f.name.endswith(".parquet")])
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: full reload
+# 🚫 DON'T: re-read and overwrite everything to pick up one file
+def full_reload_run():
+    full_reload()
+    return {"note": f"bronze now {spark.table(T('scratch_orders_bronze_full')).count():,} rows (all re-written)"}
+
+
+run_timed("6c · full re-read of the landing zone every run", "Don't", full_reload_run)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: Auto Loader
+# ✅ DO: Auto Loader picks up only the new file
+def incremental_run():
+    before = spark.table(T("scratch_orders_bronze_incremental")).count()
+    incremental_autoloader()
+    after = spark.table(T("scratch_orders_bronze_incremental")).count()
+    return {"note": f"{after - before:,} new rows ingested · bronze now {after:,} rows (nothing re-written)"}
+
+
+run_timed("6c · full re-read of the landing zone every run", "Do", incremental_run)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 7 · Joins
+# MAGIC
+# MAGIC ### 7a · Range (non-equi) joins
+# MAGIC
+# MAGIC ![Range join vs binned range join](./images/range_join.png)
+# MAGIC
+# MAGIC Fast joins (hash and sort-merge) need an **equality** condition. Spark uses it to send matching keys
+# MAGIC to the same task. For `ts BETWEEN start_ts AND end_ts`, only `car_id` is an equality. Every reading is
+# MAGIC compared with **all ~360 sessions of its car**, so 43M readings become ~15 billion comparisons. Without any
+# MAGIC equality at all you get a `BroadcastNestedLoopJoin` or a `CartesianProduct`, which is worse.
+# MAGIC
+# MAGIC **Do:** give the join an equality to work with.
+# MAGIC * On Databricks, the **range join optimization** does this for you with a hint and a bin size about
+# MAGIC   the length of a typical interval: `sessions.hint("range_join", 3600)` (seconds for timestamps).
+# MAGIC * Anywhere else: add a bucket key yourself (for example the hour or day of `ts` on both sides, with
+# MAGIC   intervals exploded into every bucket they overlap) and join on it as well.
+# MAGIC
+# MAGIC 📚 **References:** [Range join optimization](https://docs.databricks.com/aws/en/optimizations/range-join) · [Join hints](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-qry-select-hints)
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: BETWEEN join
+def avg_speed_by_session_type(session_df):
+    rows = (
+        readings.join(session_df, (readings.car_id == session_df.car_id) & readings.ts.between(session_df.start_ts, session_df.end_ts))
+        .groupBy("session_type").agg(F.round(F.avg("speed_kph"), 2).alias("avg_speed"), F.count("*").alias("readings"))
+        .collect()
+    )
+    return {"note": str({r.session_type: r.readings for r in rows})}
+
+
+# 🚫 DON'T: a BETWEEN join with only a low-cardinality equality (car_id)
+run_timed("7a · range join without the range-join optimization", "Don't", lambda: avg_speed_by_session_type(sessions))
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: range_join hint
+# ✅ DO: the range join hint (bin size ≈ typical session length in seconds)
+run_timed("7a · range join without the range-join optimization", "Do",
+          lambda: avg_speed_by_session_type(sessions.hint("range_join", 3600)))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 7b · Joining on a non-unique key
+# MAGIC
+# MAGIC ![Duplicate keys multiply rows](./images/scd_explosion.png)
+# MAGIC
+# MAGIC `dim_customer_history` is a type-2 slowly changing dimension: one row **per version** of each customer.
+# MAGIC Joining orders to it on `customer_id` alone matches each order with every version of its customer.
+# MAGIC Row counts and revenue are inflated, the job is slower because it shuffles the extra rows, and
+# MAGIC nothing fails, so dashboards are just quietly wrong.
+# MAGIC
+# MAGIC **Do:** make the join key unique on the dimension side. Filter to `is_current` for today's attributes,
+# MAGIC or join **point-in-time** (`order_date BETWEEN valid_from AND valid_to`) for the attributes that applied
+# MAGIC when the order was placed. Check uniqueness when you build a dimension
+# MAGIC (`groupBy(key).count().where("count > 1")`), and declare a primary key so readers know the grain.
+# MAGIC
+# MAGIC 📚 **References:** [Primary and foreign key constraints](https://docs.databricks.com/aws/en/tables/constraints)
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: join to SCD2 history
+true_revenue = orders.select(F.sum(net_revenue)).first()[0]
+
+
+def revenue_by_segment(dim):
+    joined = orders.join(dim, "customer_id")
+    rows = joined.groupBy("segment").agg(F.sum(net_revenue).alias("rev")).collect()
+    total = sum(r.rev for r in rows)
+    return {"note": f"total revenue {total:,.0f} vs true {true_revenue:,.0f} ({(total / true_revenue - 1) * 100:+.0f}%)"}
+
+
+# 🚫 DON'T: join to the SCD2 history on customer_id only
+run_timed("7b · join on a non-unique key (SCD2 history)", "Don't", lambda: revenue_by_segment(customer_history))
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: one row per key
+# ✅ DO: one row per key on the dimension side (current version), or a point-in-time condition
+run_timed("7b · join on a non-unique key (SCD2 history)", "Do",
+          lambda: revenue_by_segment(customer_history.where("is_current").select("customer_id", "segment")))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 7c · Giant `isin()` lists
+# MAGIC
+# MAGIC "Get the IDs, then filter the fact table by them" turns into `collect()` plus a plan that contains
+# MAGIC hundreds of thousands of literal values. The driver builds and ships a huge plan, and the optimizer
+# MAGIC sees a list of constants instead of a join it could optimize.
+# MAGIC
+# MAGIC **Do:** keep it a join. A **left semi join** returns the fact rows that have a match, without adding
+# MAGIC columns and without duplicates. Spark broadcasts the small side automatically. Use `F.broadcast(df)`
+# MAGIC only if you know better than the optimizer.
+# MAGIC
+# MAGIC 📚 **References:** [Join hints (`BROADCAST`)](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-qry-select-hints) · [Adaptive query execution](https://docs.databricks.com/aws/en/optimizations/aqe)
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: isin(collected list)
+# 🚫 DON'T: collect keys to the driver and filter with isin() (a quarter of the fleet customers)
+def fleet_revenue_isin():
+    fleet_ids = [r.customer_id for r in customers.where("segment = 'Fleet' AND customer_id % 4 = 0").select("customer_id").collect()]
+    total = orders.where(F.col("customer_id").isin(fleet_ids)).select(F.sum(net_revenue)).first()[0]
+    return {"note": f"{len(fleet_ids):,} literals in the plan · fleet revenue {total:,.0f}"}
+
+
+run_timed("7c · collect() IDs into a giant isin() filter", "Don't", fleet_revenue_isin, fraction=0.25)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: left semi join
+# ✅ DO: a semi join
+def fleet_revenue_semi_join():
+    fleet = customers.where("segment = 'Fleet'").select("customer_id")
+    total = orders.join(fleet, "customer_id", "left_semi").select(F.sum(net_revenue)).first()[0]
+    return {"note": f"fleet revenue {total:,.0f}"}
+
+
+run_timed("7c · collect() IDs into a giant isin() filter", "Do", fleet_revenue_semi_join)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 8 · Window functions
+# MAGIC
+# MAGIC ### Windows without `partitionBy`
+# MAGIC
+# MAGIC ![A window without partitionBy runs in one task](./images/window_partition.png)
+# MAGIC
+# MAGIC `Window.orderBy(...)` with no `partitionBy` defines **one window over the entire dataset**. To compute
+# MAGIC it, Spark moves every row into a **single partition**, which means one task on one core sorting
+# MAGIC 100M rows. The logs warn about it (*"No Partition Defined for Window operation! Moving all data to a
+# MAGIC single partition"*). On serverless this shows up as a run that stalls while everything else is idle.
+# MAGIC
+# MAGIC Here we want "days since this customer's previous order". The Don't sorts globally by
+# MAGIC `(customer_id, order_ts)` and then has to mask the rows where the customer changes. The Do just says
+# MAGIC what it means: one window **per customer**. The answer is the same, and the work spreads across
+# MAGIC every core. (The Don't runs on half of the customers. Their average gap is about the same as everyone's.)
+# MAGIC
+# MAGIC 📚 **References:** [Spark SQL window functions (`PARTITION BY`)](https://spark.apache.org/docs/latest/sql-ref-syntax-qry-select-window.html)
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: Window.orderBy() only
+# 🚫 DON'T: a global window (on the orders of half of the customers)
+def days_between_orders_global():
+    w = Window.orderBy("customer_id", "order_ts")
+    df = (
+        orders.where(F.col("customer_id") % 2 == 0).select("customer_id", "order_ts")
+        .withColumn("prev_customer", F.lag("customer_id").over(w))
+        .withColumn("prev_ts", F.lag("order_ts").over(w))
+        .withColumn("gap_days", F.when(F.col("prev_customer") == F.col("customer_id"),
+                                       F.datediff("order_ts", "prev_ts")))
+    )
+    return {"note": f"avg days between orders {df.select(F.avg('gap_days')).first()[0]:.2f}"}
+
+
+run_timed("8 · window without partitionBy", "Don't", days_between_orders_global, fraction=0.5)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: Window.partitionBy()
+# ✅ DO: partition the window by the entity
+def days_between_orders_partitioned():
+    w = Window.partitionBy("customer_id").orderBy("order_ts")
+    df = orders.select("customer_id", "order_ts").withColumn(
+        "gap_days", F.datediff("order_ts", F.lag("order_ts").over(w))
+    )
+    return {"note": f"avg days between orders {df.select(F.avg('gap_days')).first()[0]:.2f}"}
+
+
+run_timed("8 · window without partitionBy", "Do", days_between_orders_partitioned)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 9 · Writing data
+# MAGIC
+# MAGIC ### 9a · Over-partitioning
+# MAGIC
+# MAGIC ![Partitioning vs liquid clustering](./images/write_layout.png)
+# MAGIC
+# MAGIC **`partitionBy` on high-cardinality columns.** Hive-style partitioning creates one folder for each
+# MAGIC distinct value combination. `partitionBy("order_date", "dealer_id")` on one quarter of orders gives
+# MAGIC ~45,000 folders, each with tiny files. (The Don't writes the first 2 days, ~1,000 folders. The Do writes the whole quarter.) Writing it is slow, and every later read pays the
+# MAGIC small-files cost from section 6. A useful rule of thumb from the Hive era was *don't partition tables
+# MAGIC under 1 TB, and keep each partition ≥ 1 GB*.
+# MAGIC
+# MAGIC **Do:** use **liquid clustering** (`CLUSTER BY`). It co-locates data by up to 4 keys for data
+# MAGIC skipping, avoids the folder explosion, and lets you change the keys later without rewriting the
+# MAGIC table. On Unity Catalog managed tables you can let Databricks choose the keys with
+# MAGIC `CLUSTER BY AUTO`.
+
+# MAGIC
+# MAGIC 📚 **References:** [When to partition tables (the 1 TB guideline)](https://docs.databricks.com/aws/en/tables/partitions) · [Liquid clustering](https://docs.databricks.com/aws/en/delta/clustering) · [Control data file size](https://docs.databricks.com/aws/en/delta/tune-file-size)
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: partitionBy(date, dealer)
+q4_orders = orders.where("order_date BETWEEN '2025-10-01' AND '2025-12-31'")
+spark.sql(f"DROP TABLE IF EXISTS {T('scratch_orders_partitioned')}")
+
+
+# 🚫 DON'T: partition by high-cardinality columns (the first 2 of the quarter's 92 days)
+def write_over_partitioned():
+    q4_orders.where("order_date < '2025-10-03'").write.mode("overwrite").partitionBy("order_date", "dealer_id").saveAsTable(T("scratch_orders_partitioned"))
+    files = spark.sql(f"DESCRIBE DETAIL {T('scratch_orders_partitioned')}").first().numFiles
+    return {"note": f"{files:,} files written for 2 days (the whole quarter: ~46x that)"}
+
+
+run_timed("9a · partitionBy(order_date, dealer_id)", "Don't", write_over_partitioned, fraction=2 / 92)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: CLUSTER BY
+# ✅ DO: liquid clustering on the same columns
+spark.sql(f"DROP TABLE IF EXISTS {T('scratch_orders_clustered')}")
+
+
+def write_clustered():
+    q4_orders.write.mode("overwrite").clusterBy("order_date", "dealer_id").saveAsTable(T("scratch_orders_clustered"))
+    files = spark.sql(f"DESCRIBE DETAIL {T('scratch_orders_clustered')}").first().numFiles
+    return {"note": f"{files:,} files written"}
+
+
+run_timed("9a · partitionBy(order_date, dealer_id)", "Do", write_clustered)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 9b · `coalesce(1)` before a big write
+# MAGIC
+# MAGIC Using **`coalesce(1)` / `repartition(1)`** to get "one nice file" forces the final stage of the job onto
+# MAGIC **one task**: one core writes everything, and the rest of the compute sits idle. A Delta table is a
+# MAGIC folder of files plus a transaction log, and consumers never need a single file. If someone really
+# MAGIC needs one CSV, aggregate first so the result is small, and then write it.
+# MAGIC
+# MAGIC 📚 **References:** [PySpark `coalesce` ("drastic coalesce")](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.coalesce.html) · [Control data file size](https://docs.databricks.com/aws/en/delta/tune-file-size)
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: coalesce(1)
+# 🚫 DON'T: squeeze the whole write through one task (35% of the orders)
+def write_single_file():
+    sample_orders(0.35).coalesce(1).write.mode("overwrite").saveAsTable(T("scratch_orders_one_file"))
+
+
+run_timed("9b · coalesce(1) before writing 100M rows", "Don't", write_single_file, fraction=0.35)
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: parallel write
+# ✅ DO: let Spark write in parallel (optimized writes size the files for you)
+def write_parallel():
+    orders.write.mode("overwrite").saveAsTable(T("scratch_orders_parallel"))
+    files = spark.sql(f"DESCRIBE DETAIL {T('scratch_orders_parallel')}").first().numFiles
+    return {"note": f"{files:,} files written in parallel"}
+
+
+run_timed("9b · coalesce(1) before writing 100M rows", "Do", write_parallel)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 10 · Cluster-era habits on serverless
+# MAGIC
+# MAGIC ### Tuning knobs, `sparkContext` and RDDs
+# MAGIC
+# MAGIC Many Spark tuning tips from blog posts assume you manage the cluster yourself: set executor memory,
+# MAGIC switch off AQE, raise the broadcast threshold, use `sc.parallelize`. On **serverless**, Databricks
+# MAGIC manages the compute, and these knobs are either not available or not needed:
+# MAGIC
+# MAGIC * **Adaptive Query Execution** is always on. It picks broadcast joins at runtime, coalesces shuffle
+# MAGIC   partitions, and splits skewed partitions.
+# MAGIC * **Photon** runs supported operators natively, and compute scales with the workload.
+# MAGIC * **Spark Connect** separates your Python process from the engine, so JVM-only APIs (`sparkContext`, RDDs, `_jvm`) aren't there.
+# MAGIC
+# MAGIC Code full of `spark.conf.set(...)` lines fails on serverless, or pins settings that were tuned for
+# MAGIC a different data size and gets slower as the data grows.
+# MAGIC
+# MAGIC **Do:** remove them. When a specific query needs help, fix the query (the sections above) or use a
+# MAGIC targeted **hint** (`broadcast`, `range_join`, `skew`). The few session settings that still make
+# MAGIC sense, such as `spark.sql.session.timeZone`, are supported.
+# MAGIC
+# MAGIC 📚 **References:** [Serverless compute limitations](https://docs.databricks.com/aws/en/compute/serverless/limitations) · [Supported Spark configurations](https://docs.databricks.com/aws/en/spark/conf) · [Serverless best practices](https://docs.databricks.com/aws/en/compute/serverless/best-practices) · [Adaptive query execution](https://docs.databricks.com/aws/en/optimizations/aqe)
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,🚫 Don't: cluster tuning on serverless
+# 🚫 DON'T: carry cluster tuning into serverless code
+cluster_era_habits = {
+    "spark.conf.set('spark.executor.memory', '16g')": lambda: spark.conf.set("spark.executor.memory", "16g"),
+    "spark.conf.set('spark.sql.adaptive.enabled', 'false')": lambda: spark.conf.set("spark.sql.adaptive.enabled", "false"),
+    "spark.conf.set('spark.sql.autoBroadcastJoinThreshold', '-1')": lambda: spark.conf.set("spark.sql.autoBroadcastJoinThreshold", "-1"),
+    "spark.sparkContext.parallelize(range(10))": lambda: spark.sparkContext.parallelize(range(10)),
+    "orders.rdd.map(...)": lambda: orders.rdd.map(lambda r: r.quantity).take(1),
+}
+for code, attempt in cluster_era_habits.items():
+    try:
+        attempt()
+        print(f"⚠️  accepted:  {code}")
+    except Exception as e:
+        print(f"💥 rejected:  {code}\n      {str(e).strip().splitlines()[0][:160]}")
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Do: DataFrame APIs
+# ✅ DO: the DataFrame equivalents, and session settings that are about semantics rather than tuning
+spark.conf.set("spark.sql.session.timeZone", "UTC")
+small = spark.createDataFrame([(i,) for i in range(10)], "n INT")  # instead of sc.parallelize
+print(orders.select("quantity").limit(1).first())  # instead of orders.rdd.map(...).take(1)
+display(small.selectExpr("n", "n * n AS n_squared"))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 11 · 🧞 Genie Code challenge
+# MAGIC
+# MAGIC ### Fix the dealer scorecard job
+# MAGIC
+# MAGIC The function below is a real-looking "dealer scorecard" job. For every dealer in a region it reports
+# MAGIC the orders, customers, net revenue, margin and top category for one month, and ranks the dealers by
+# MAGIC revenue. It gives the right answer. It also contains **at least eight** of the anti-patterns from this
+# MAGIC notebook.
+# MAGIC
+# MAGIC **Your task**
+# MAGIC 1. Run the next two cells to define the slow version and time it. It takes about 2 minutes; the challenge is the one Don't that runs in full.
+# MAGIC 2. Open **Genie Code** (the assistant side panel, or `Cmd/Ctrl + I` inside the cell) and ask it to optimize the code. Some prompts to try:
+# MAGIC    * *"What Spark anti-patterns do you see in `build_dealer_scorecard_slow`? Explain why each one is slow on serverless."*
+# MAGIC    * *"Rewrite it as `build_dealer_scorecard_fast` with the same signature, output columns and results. Do all the work in Spark with DataFrame functions: no `collect()` or `toPandas()` in loops, no per-dealer queries, no row-wise pandas `apply`, no `count()` checks, no `coalesce(1)`."*
+# MAGIC    * *"Now make the result deterministic when two categories have the same revenue."*
+# MAGIC 3. Paste the result into the `build_dealer_scorecard_fast` cell and run the **check** cell. It confirms that your output matches the expected result and records your time on the scoreboard.
+# MAGIC
+# MAGIC Don't accept the first answer blindly. Check that Genie Code kept the semantics (month filter, region
+# MAGIC filter, dealers with no orders excluded, rounding). The reference solution and an explanation of
+# MAGIC every fix are in `02_genie_code_challenge_solution`.
+# MAGIC
+# MAGIC 📚 **References:** [Genie Code](https://docs.databricks.com/aws/en/genie-code/)
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,🧞 The slow scorecard job
+def build_dealer_scorecard_slow(region="Midwest", month="2025-12", target_table=T("dealer_scorecard_slow")):
+    """Scorecard per dealer in `region` for `month` (YYYY-MM): orders, customers, net revenue, margin,
+    margin %, top category and revenue rank. Overwrites target_table."""
+    region_dealers = spark.table(T("dim_dealer")).where(F.col("region") == region).collect()
+    parts_pdf = spark.table(T("dim_part")).toPandas()
+
+    rows = []
+    for d in region_dealers:
+        dealer_orders = spark.table(T("fact_orders")).where(
+            (F.col("dealer_id") == d.dealer_id) & (F.date_format("order_date", "yyyy-MM") == month)
+        )
+        if dealer_orders.count() == 0:
+            continue
+        pdf = dealer_orders.toPandas().merge(parts_pdf, on="part_id")
+        pdf["net_revenue"] = pdf.apply(lambda r: r["quantity"] * r["unit_price"] * (1 - r["discount_pct"]), axis=1)
+        pdf["margin"] = pdf.apply(lambda r: r["net_revenue"] - r["quantity"] * r["unit_cost"], axis=1)
+        rows.append({
+            "dealer_id": int(d.dealer_id),
+            "dealer_name": d.dealer_name,
+            "orders": int(len(pdf)),
+            "customers": int(pdf["customer_id"].nunique()),
+            "net_revenue": float(pdf["net_revenue"].sum()),
+            "margin": float(pdf["margin"].sum()),
+            "top_category": pdf.groupby("category")["net_revenue"].sum().idxmax(),
+        })
+
+    scorecard = spark.createDataFrame(pd.DataFrame(rows))
+    for c in ["net_revenue", "margin"]:
+        scorecard = scorecard.withColumn(c, F.round(F.col(c), 2))
+    scorecard = scorecard.withColumn("margin_pct", F.round(100 * F.col("margin") / F.col("net_revenue"), 2))
+    scorecard = scorecard.withColumn("revenue_rank", F.row_number().over(Window.orderBy(F.desc("net_revenue"))))
+    print(f"scorecard rows: {scorecard.count()}")
+    display(scorecard)
+    scorecard.coalesce(1).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(target_table)
+    return scorecard
+
+# COMMAND ----------
+
+# DBTITLE 1,⏱️ Time the slow version
+run_timed("11 · Genie Code challenge: dealer scorecard", "Don't", build_dealer_scorecard_slow, timeout_s=300)
+
+# COMMAND ----------
+
+# DBTITLE 1,🧞 Your optimized version
+# 🧞 Paste Genie Code's optimized version here. Keep the name, signature and output columns.
+def build_dealer_scorecard_fast(region="Midwest", month="2025-12", target_table=T("dealer_scorecard_fast")):
+    raise NotImplementedError("Ask Genie Code to optimize build_dealer_scorecard_slow, then paste the result here.")
+
+# COMMAND ----------
+
+# DBTITLE 1,✅ Check your result
+# Check: runs your version, times it, and compares the output with the expected result
+fast_result = run_timed("11 · Genie Code challenge: dealer scorecard", "Do", build_dealer_scorecard_fast)
+if fast_result is not None:
+    check_dealer_scorecard(T("dealer_scorecard_fast"))
+else:
+    print("Not there yet: fix the error above, then rerun this cell.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ---
+# MAGIC ## 12 · Scoreboard
+# MAGIC
+# MAGIC ### Your results
+# MAGIC
+# MAGIC Your latest result for every scenario, read from the `workshop_scoreboard` table (so it includes
+# MAGIC runs from before a restart). **`dont_full_size_s`** is the Don't's time projected to the full workload
+# MAGIC (the measured time if it ran in full). **Speedup** is that ÷ the fastest successful Do. `≈` marks a
+# MAGIC projection, and `>` marks a Don't that the watchdog cancelled, so the real gap is bigger.
+
+# COMMAND ----------
+
+# DBTITLE 1,▶️ Resume point
+# MAGIC %run ./config
+
+# COMMAND ----------
+
+# DBTITLE 1,Scoreboard table
+board = show_scoreboard()
+display(board.select("scenario", "dont_status", "dont_fraction", "dont_measured_s", "dont_full_size_s", "do_s",
+                     "speedup_label", "dont_driver_mem_gb"))
+
+# COMMAND ----------
+
+# DBTITLE 1,Don't vs Do chart
+import matplotlib.pyplot as plt
+
+pdf = board.where("dont_full_size_s IS NOT NULL AND do_s IS NOT NULL").orderBy("dont_full_size_s").toPandas()
+fig, ax = plt.subplots(figsize=(10, 0.45 * len(pdf) + 1))
+y = np.arange(len(pdf))
+ax.barh(y + 0.2, pdf["dont_full_size_s"], height=0.4, color="#d1495b", label="Don't (full size)")
+ax.barh(y - 0.2, pdf["do_s"], height=0.4, color="#2e86ab", label="Do")
+ax.set_yticks(y, pdf["scenario"], fontsize=8)
+ax.set_xscale("log")
+ax.set_xlabel("seconds (log scale)")
+for i, label in enumerate(pdf["speedup_label"]):
+    ax.text(pdf["dont_full_size_s"].iloc[i] * 1.08, i + 0.2, label, va="center", fontsize=8)
+ax.legend(loc="lower right")
+ax.set_title("Don't vs Do")
+plt.tight_layout()
+plt.show()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Cheat sheet
+# MAGIC
+# MAGIC | 🚫 Don't | ✅ Do |
+# MAGIC |---|---|
+# MAGIC | `collect()` / `toPandas()` / iterate over big DataFrames | aggregate, filter and `limit` in Spark; bring back small results |
+# MAGIC | `toPandas()` everything, then pick columns | `select` the columns first (column pruning) |
+# MAGIC | `display()` / `count()` after every step in a job | one action (the write); row counts from `DESCRIBE HISTORY`; `cache()` when reusing |
+# MAGIC | `if df.count() > 0` | `if not df.isEmpty()` |
+# MAGIC | a Python loop running one query per key | one `groupBy` / join |
+# MAGIC | `INSERT INTO ... VALUES` per row | one DataFrame append, or `MERGE INTO` |
+# MAGIC | Python UDFs for arithmetic and if/else | built-in functions (› pandas UDF › Python UDF) |
+# MAGIC | `withColumn` / `union` in a loop | `withColumns` / one `select` / one read of the folder |
+# MAGIC | `inferSchema` on CSV/JSON | an explicit schema, or Auto Loader with schema hints |
+# MAGIC | thousands of tiny files | right-sized files; `OPTIMIZE` / predictive optimization |
+# MAGIC | full re-read of the landing zone every run | Auto Loader / declarative pipelines (incremental) |
+# MAGIC | `BETWEEN` joins with no usable equality | the `range_join` hint, or a bucket key |
+# MAGIC | joining on a non-unique key | unique key on the dimension side (`is_current` or point-in-time) |
+# MAGIC | `isin(<collected list>)` | left semi join |
+# MAGIC | `Window.orderBy(...)` with no `partitionBy` | `Window.partitionBy(key).orderBy(...)` |
+# MAGIC | `partitionBy(<high-cardinality column>)` | liquid clustering (`CLUSTER BY` / `CLUSTER BY AUTO`) |
+# MAGIC | `coalesce(1)` before a big write | parallel writes; aggregate first if you really need one file |
+# MAGIC | `spark.conf.set(...)` tuning, `sparkContext`, RDDs | let serverless/AQE handle it; targeted hints; DataFrame APIs |
+
+# COMMAND ----------
+
+# DBTITLE 1,🧹 Optional cleanup
+# Optional: remove the scratch tables this notebook wrote (the generated source data is kept)
+CLEAN_UP = False
+if CLEAN_UP:
+    for t in spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{SCHEMA}` LIKE 'scratch_*'").collect():
+        spark.sql(f"DROP TABLE IF EXISTS {T(t.tableName)}")
+        print("dropped", t.tableName)
