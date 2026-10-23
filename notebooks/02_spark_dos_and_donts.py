@@ -34,7 +34,8 @@
 # MAGIC **Before you start**
 # MAGIC 1. The setup job (`Spark Do's & Don'ts - setup`) must have run once. (`01_bronze_to_gold_lab` is a good warm-up, but not required.)
 # MAGIC 2. Attach **serverless** compute. Use environment version **5** or later (*Environment* side panel); `df.cache()` needs it.
-# MAGIC 3. Leave the `catalog` / `schema` widgets empty to use the values from the setup job, or fill them in.
+# MAGIC 3. **Set your catalog and schema:** fill the `catalog` / `schema` widgets at the top, or edit the first cell of
+# MAGIC    `config.py` (✏️ *Your catalog and schema*). Left empty, the values saved by the setup job are used.
 # MAGIC
 # MAGIC | # | section | the Don'ts |
 # MAGIC |---|---|---|

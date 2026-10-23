@@ -4,10 +4,10 @@
 # MAGIC
 # MAGIC Included by the workshop notebooks with `%run ./config`; you do not run this notebook on its own.
 # MAGIC
-# MAGIC * **Where the data lives.** `catalog` and `schema` come from the notebook widgets. When the
-# MAGIC   notebook runs as a bundle job they are filled from the job parameters. When you open a notebook
-# MAGIC   by hand and leave the widgets empty, the values are read from `_workshop_config.json`, which the
-# MAGIC   setup job writes next to the notebooks.
+# MAGIC * **Where the data lives: set this first.** The next cell sets `CATALOG` and `SCHEMA`. Fill the `catalog` and
+# MAGIC   `schema` widgets at the top of your notebook, or type your names directly into that cell. When both
+# MAGIC   are left empty, the values saved by the setup job (`_workshop_config.json`) are used. Bundle jobs
+# MAGIC   fill the widgets from their job parameters.
 # MAGIC * **Shared DataFrames** (`orders`, `parts`, `wide`, ...) are defined here, so `%run ./config` at the
 # MAGIC   top of any section restores everything that section needs, for example after a restart.
 # MAGIC * **`run_timed(...)`** runs one Don't or Do, times it, prints the outcome and appends it to the
@@ -20,8 +20,22 @@
 
 # COMMAND ----------
 
-import json
-import os
+# DBTITLE 1,✏️ Your catalog and schema
+# ✏️ WHERE THE WORKSHOP DATA LIVES. Fill the "catalog" and "schema" widgets at the top of the notebook, or replace
+# the right-hand side of the two lines below with your own names, for example:
+#     CATALOG = "main"
+#     SCHEMA = "spark_dos_donts"
+# With both widgets empty, the values saved by the setup job (_workshop_config.json next to the notebooks) are used.
+import json, os  # (the three lines below just read the widgets and the saved values; no need to edit them)
+dbutils.widgets.text("catalog", "", "Catalog"); dbutils.widgets.text("schema", "", "Schema")
+_saved_file = "/Workspace" + os.path.dirname(dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()) + "/_workshop_config.json"
+_saved = json.load(open(_saved_file)) if os.path.exists(_saved_file) else {}
+
+CATALOG = dbutils.widgets.get("catalog").strip() or _saved.get("catalog", "")
+SCHEMA = dbutils.widgets.get("schema").strip() or _saved.get("schema", "")
+
+# COMMAND ----------
+
 import threading
 import time
 
@@ -31,36 +45,22 @@ import psutil
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-_NOTEBOOK_DIR = "/Workspace" + os.path.dirname(
-    dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-)
-CONFIG_FILE = f"{_NOTEBOOK_DIR}/_workshop_config.json"
-
-dbutils.widgets.text("catalog", "", "Catalog")
-dbutils.widgets.text("schema", "", "Schema")
 dbutils.widgets.text("dont_timeout_seconds", "120", "Don't timeout (s)")
 dbutils.widgets.text("workshop_tag", "spark_dos_donts", "Workshop tag")
 
-_saved = {}
-if os.path.exists(CONFIG_FILE):
-    with open(CONFIG_FILE) as f:
-        _saved = json.load(f)
-
-CATALOG = dbutils.widgets.get("catalog").strip() or _saved.get("catalog", "")
-SCHEMA = dbutils.widgets.get("schema").strip() or _saved.get("schema", "")
 DONT_TIMEOUT_S = int(dbutils.widgets.get("dont_timeout_seconds") or 120)
 WORKSHOP_TAG_KEY = "workshop_name"  # same key as the bundle's presets.tags
 WORKSHOP_TAG = dbutils.widgets.get("workshop_tag").strip() or "spark_dos_donts"
 
 if not CATALOG or not SCHEMA:
     raise ValueError(
-        "No catalog/schema configured. Fill the 'catalog' and 'schema' widgets at the top of the "
-        "notebook, or run the setup job first (it writes _workshop_config.json next to the notebooks)."
+        "No catalog/schema configured. Fill the 'catalog' and 'schema' widgets at the top of the notebook, "
+        "set CATALOG and SCHEMA in the first cell of config.py, or run the setup job first (it saves them)."
     )
 
 VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/raw_files"
 
-# Make the workshop schema the default, so SQL cells can use short table names (fact_orders, lab_silver_orders, ...)
+# Make the workshop schema the default, so SQL cells can use short table names (fact_orders, endtoend_silver_orders_fact, ...)
 spark.sql(f"USE CATALOG `{CATALOG}`")
 spark.sql(f"USE SCHEMA `{SCHEMA}`")
 
