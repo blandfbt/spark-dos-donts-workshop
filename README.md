@@ -20,6 +20,7 @@ notebooks/02_genie_code_challenge_solution.py reference solution for the challen
 notebooks/config.py                          widgets, table names, timing/scoreboard helpers (%run)
 notebooks/images/                            diagrams used in the markdown cells
 assets/src/make_graphics.py                  regenerates the diagrams (SVG -> PNG, needs rsvg-convert)
+presentation/                                15-20 min slide deck (single HTML + PDF) that goes with the workshop
 ```
 
 ## What's covered

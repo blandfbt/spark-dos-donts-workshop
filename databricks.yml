@@ -17,6 +17,7 @@ include:
 sync:
   exclude:
     - assets/src/**   # SVG sources of the notebook graphics; only the rendered PNGs are needed
+    - presentation/**  # the slide deck isn't needed in the workspace
 
 variables:
   catalog:
