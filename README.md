@@ -139,9 +139,30 @@ solution, and writes the timings to `workshop_scoreboard`.
 | `schema` | `spark_dos_donts` | schema for all tables and the `raw_files` volume (created if missing) |
 | `fact_rows` | `100000000` | size of `fact_orders` (the other tables are fixed size) |
 | `dont_timeout_seconds` | `120` | watchdog limit per Don't (also a notebook widget) |
+| `workshop_tag` | `spark_dos_donts` | value of the `workshop_name` tag on jobs and Unity Catalog objects |
 | `warehouse_id` | *(empty)* | SQL warehouse for the lab dashboard; empty = first serverless warehouse found |
 | `environment_version` | `5` | serverless environment; ≥ 5 is needed for `df.cache()` |
 | `performance_target` | `PERFORMANCE_OPTIMIZED` | serverless job performance mode |
+
+## Finding workshop assets
+
+Everything the workshop creates is tagged **`workshop_name = spark_dos_donts`** (change the value with
+`--var="workshop_tag=<value>"`):
+
+* **Jobs**: through the bundle's `presets.tags`, so any resource added to the bundle later gets it too.
+  In the Jobs UI, filter by tag `workshop_name: spark_dos_donts`.
+* **Unity Catalog**: the schema, the `raw_files` volume and every table. The setup job tags them, and the
+  lab and the do's and don'ts notebook tag the tables they add:
+
+  ```sql
+  SELECT table_name FROM <catalog>.information_schema.table_tags
+  WHERE tag_name = 'workshop_name' AND tag_value = 'spark_dos_donts';
+  ```
+
+The key is `workshop_name` rather than `workshop` because some accounts already govern a `workshop` tag
+key with fixed values. Tagging Unity Catalog objects needs the `APPLY TAG` privilege. Without it, the
+notebooks print a note and carry on. The lab's AI/BI dashboard can't be tagged; it's named
+`Apex Motorsports Parts - December sales (<schema>)` in your home folder.
 
 ## Clean up
 

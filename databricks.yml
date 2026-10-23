@@ -15,12 +15,22 @@ bundle:
 include:
   - resources/*.yml
 
+# Tag every bundle resource that supports tags (both jobs today) so workshop assets are easy to filter.
+# The notebooks apply the same tag to the Unity Catalog schema, volume and tables they create. The key is
+# "workshop_name" rather than "workshop" because some accounts govern a "workshop" tag key with fixed values.
+presets:
+  tags:
+    workshop_name: ${var.workshop_tag}
+
 sync:
   exclude:
     - assets/src/**   # SVG sources of the notebook graphics; only the rendered PNGs are needed
     - presentation/**  # the slide deck isn't needed in the workspace
 
 variables:
+  workshop_tag:
+    description: Value of the "workshop_name" tag put on every job and Unity Catalog object of this workshop.
+    default: spark_dos_donts
   catalog:
     description: Existing Unity Catalog catalog that will hold the workshop schema.
   schema:

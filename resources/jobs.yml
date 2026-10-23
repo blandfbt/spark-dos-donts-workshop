@@ -23,6 +23,8 @@ resources:
           default: ${var.schema}
         - name: fact_rows
           default: ${var.fact_rows}
+        - name: workshop_tag
+          default: ${var.workshop_tag}
       environments: &workshop_environments
         - environment_key: serverless
           spec:
@@ -52,6 +54,8 @@ resources:
           default: ${var.dont_timeout_seconds}
         - name: auto_solve
           default: "true"
+        - name: workshop_tag
+          default: ${var.workshop_tag}
         - name: warehouse_id
           default: ${var.warehouse_id}
       environments: *workshop_environments

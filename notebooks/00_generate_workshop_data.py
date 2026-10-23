@@ -36,10 +36,13 @@ from pyspark.sql import functions as F
 dbutils.widgets.text("catalog", "", "Catalog")
 dbutils.widgets.text("schema", "spark_dos_donts", "Schema")
 dbutils.widgets.text("fact_rows", "100000000", "fact_orders rows")
+dbutils.widgets.text("workshop_tag", "spark_dos_donts", "Workshop tag")
 
 CATALOG = dbutils.widgets.get("catalog").strip()
 SCHEMA = dbutils.widgets.get("schema").strip()
 FACT_ROWS = int(dbutils.widgets.get("fact_rows"))
+WORKSHOP_TAG_KEY = "workshop_name"  # same key as the bundle's presets.tags
+WORKSHOP_TAG = dbutils.widgets.get("workshop_tag").strip() or "spark_dos_donts"
 assert CATALOG and SCHEMA, "Set the catalog and schema widgets (or run this notebook through the setup job)."
 
 VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/raw_files"
@@ -64,6 +67,23 @@ spark.sql(f"DROP TABLE IF EXISTS `{CATALOG}`.`{SCHEMA}`.workshop_scoreboard")  #
 
 def T(name):
     return f"`{CATALOG}`.`{SCHEMA}`.`{name}`"
+
+
+def tag_workshop_objects(catalog, schema, value):
+    """Put the workshop tag on the schema, the raw-files volume and every table in it (for easy filtering)."""
+    tagged, skipped = 0, []
+    targets = [("SCHEMA", f"`{catalog}`.`{schema}`"), ("VOLUME", f"`{catalog}`.`{schema}`.`raw_files`")]
+    targets += [("TABLE", f"`{catalog}`.`{schema}`.`{t.tableName}`")
+                for t in spark.sql(f"SHOW TABLES IN `{catalog}`.`{schema}`").where("NOT isTemporary").collect()]
+    for kind, name in targets:
+        try:
+            spark.sql(f"ALTER {kind} {name} SET TAGS ('{WORKSHOP_TAG_KEY}' = '{value}')")
+            tagged += 1
+        except Exception as e:  # e.g. missing APPLY TAG privilege; tagging is a convenience, never a blocker
+            skipped.append(f"{name}: {str(e).strip().splitlines()[0][:80]}")
+    print(f"🏷️  tagged {tagged} objects with {WORKSHOP_TAG_KEY} = {value}" + (f" ({len(skipped)} skipped)" if skipped else ""))
+    for s in skipped[:3]:
+        print("   ", s)
 
 
 def save(df, name, cluster_by=None):
@@ -445,6 +465,9 @@ notebook_dir = "/Workspace" + os.path.dirname(
 with open(f"{notebook_dir}/_workshop_config.json", "w") as f:
     json.dump({"catalog": CATALOG, "schema": SCHEMA}, f)
 print(f"Wrote {notebook_dir}/_workshop_config.json")
+
+# Tag the schema, volume and every generated table, so workshop objects are easy to find and filter
+tag_workshop_objects(CATALOG, SCHEMA, WORKSHOP_TAG)
 
 display(
     spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{SCHEMA}`").select("tableName")

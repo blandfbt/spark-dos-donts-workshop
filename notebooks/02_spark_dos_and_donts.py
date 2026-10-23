@@ -1400,6 +1400,8 @@ plt.show()
 # COMMAND ----------
 
 # DBTITLE 1,🧹 Optional cleanup
+tag_workshop_objects(CATALOG, SCHEMA, WORKSHOP_TAG)  # tag the scratch_* tables this notebook wrote
+
 # Optional: remove the scratch tables this notebook wrote (the generated source data is kept)
 CLEAN_UP = False
 if CLEAN_UP:

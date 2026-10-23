@@ -39,6 +39,7 @@ CONFIG_FILE = f"{_NOTEBOOK_DIR}/_workshop_config.json"
 dbutils.widgets.text("catalog", "", "Catalog")
 dbutils.widgets.text("schema", "", "Schema")
 dbutils.widgets.text("dont_timeout_seconds", "120", "Don't timeout (s)")
+dbutils.widgets.text("workshop_tag", "spark_dos_donts", "Workshop tag")
 
 _saved = {}
 if os.path.exists(CONFIG_FILE):
@@ -48,6 +49,8 @@ if os.path.exists(CONFIG_FILE):
 CATALOG = dbutils.widgets.get("catalog").strip() or _saved.get("catalog", "")
 SCHEMA = dbutils.widgets.get("schema").strip() or _saved.get("schema", "")
 DONT_TIMEOUT_S = int(dbutils.widgets.get("dont_timeout_seconds") or 120)
+WORKSHOP_TAG_KEY = "workshop_name"  # same key as the bundle's presets.tags
+WORKSHOP_TAG = dbutils.widgets.get("workshop_tag").strip() or "spark_dos_donts"
 
 if not CATALOG or not SCHEMA:
     raise ValueError(
@@ -65,6 +68,23 @@ spark.sql(f"USE SCHEMA `{SCHEMA}`")
 def T(name):
     """Fully qualified name of a workshop table."""
     return f"`{CATALOG}`.`{SCHEMA}`.`{name}`"
+
+
+def tag_workshop_objects(catalog, schema, value):
+    """Put the workshop tag on the schema, the raw-files volume and every table in it (for easy filtering)."""
+    tagged, skipped = 0, []
+    targets = [("SCHEMA", f"`{catalog}`.`{schema}`"), ("VOLUME", f"`{catalog}`.`{schema}`.`raw_files`")]
+    targets += [("TABLE", f"`{catalog}`.`{schema}`.`{t.tableName}`")
+                for t in spark.sql(f"SHOW TABLES IN `{catalog}`.`{schema}`").where("NOT isTemporary").collect()]
+    for kind, name in targets:
+        try:
+            spark.sql(f"ALTER {kind} {name} SET TAGS ('{WORKSHOP_TAG_KEY}' = '{value}')")
+            tagged += 1
+        except Exception as e:  # e.g. missing APPLY TAG privilege; tagging is a convenience, never a blocker
+            skipped.append(f"{name}: {str(e).strip().splitlines()[0][:80]}")
+    print(f"🏷️  tagged {tagged} objects with {WORKSHOP_TAG_KEY} = {value}" + (f" ({len(skipped)} skipped)" if skipped else ""))
+    for s in skipped[:3]:
+        print("   ", s)
 
 
 # COMMAND ----------

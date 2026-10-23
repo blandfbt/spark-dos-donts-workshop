@@ -548,6 +548,7 @@ check("dashboard")
 # COMMAND ----------
 
 # DBTITLE 1,Summary of the lab tables
+tag_workshop_objects(CATALOG, SCHEMA, WORKSHOP_TAG)  # tag the new lab_* tables like the rest of the workshop
 display(spark.sql(f"""
     SELECT table_name, comment
     FROM `{CATALOG}`.information_schema.tables
