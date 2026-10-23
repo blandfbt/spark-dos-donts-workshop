@@ -113,8 +113,9 @@ Instead of passing `--var` and `-p` every time, you can set them once in `databr
    `/Workspace/Users/<you>/.bundle/spark_dos_donts_workshop/dev/files/notebooks/`.
 2. Start with **`01_bronze_to_gold_lab`**, then continue with **`02_spark_dos_and_donts`**.
 3. Attach **serverless** compute. In the *Environment* side panel, choose environment version **5** or later.
-4. Leave the `catalog`/`schema` widgets empty: the setup job wrote `_workshop_config.json` next to the
-   notebooks, and `config.py` picks it up. Or fill the widgets in by hand.
+4. **Set your catalog and schema**: fill the `catalog`/`schema` widgets at the top of the notebook, or edit
+   the first cell of `notebooks/config.py` (✏️ *Your catalog and schema*). If both are left empty, the
+   values the setup job saved in `_workshop_config.json` are used.
 5. Run the cells top to bottom, section by section. In the lab, leave `auto_solve` at `false`.
 
 **Instructor dry run / pre-warm:** `databricks bundle run -t dev -p <profile> spark_dos_donts_workshop` runs

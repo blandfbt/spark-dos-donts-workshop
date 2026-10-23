@@ -10,9 +10,9 @@
 # MAGIC
 # MAGIC | layer | what it holds | you build |
 # MAGIC |---|---|---|
-# MAGIC | 🥉 **Bronze** | raw data exactly as delivered, plus where and when it arrived | `lab_bronze_orders`, `lab_bronze_dealers` |
-# MAGIC | 🥈 **Silver** | typed, cleaned, de-duplicated, one row per business entity | `lab_silver_orders`, `lab_silver_dealers`, `lab_quarantine_orders` |
-# MAGIC | 🥇 **Gold** | aggregated tables shaped for a question or a dashboard | `lab_gold_daily_dealer_sales`, `lab_gold_category_region` |
+# MAGIC | 🥉 **Bronze** | raw data exactly as delivered, plus where and when it arrived | `endtoend_bronze_orders_fact`, `endtoend_bronze_dealers_dim` |
+# MAGIC | 🥈 **Silver** | typed, cleaned, de-duplicated, one row per business entity | `endtoend_silver_orders_fact`, `endtoend_silver_dealers_dim`, `endtoend_silver_parts_dim`, `endtoend_quarantine_orders_fact` |
+# MAGIC | 🥇 **Gold** | aggregated tables shaped for a question or a dashboard | `endtoend_gold_daily_dealer_sales_fact`, `endtoend_gold_category_region_fact` |
 # MAGIC
 # MAGIC ### How the lab works
 # MAGIC
@@ -28,6 +28,8 @@
 # MAGIC both see the same tables: the configuration cell sets the workshop schema as the default.
 # MAGIC
 # MAGIC **Before you start:** the setup job must have run once. Attach **serverless** compute (environment 5 or later).
+# MAGIC **Set your catalog and schema** in the `catalog` / `schema` widgets at the top, or in the first cell of
+# MAGIC `config.py` (✏️ *Your catalog and schema*). Left empty, the values saved by the setup job are used.
 # MAGIC Plan on about 45 minutes. Afterwards, continue with `02_spark_dos_and_donts`.
 
 # COMMAND ----------
@@ -43,7 +45,7 @@
 # COMMAND ----------
 
 # DBTITLE 1,Start fresh (optional)
-# Set START_FRESH = True (or run reset_lab()) to start the lab over. It drops every lab_* table and the lab
+# Set START_FRESH = True (or run reset_lab()) to start the lab over. It drops every endtoend_* table and the lab
 # checkpoints; the raw files and the workshop data are kept.
 START_FRESH = AUTO_SOLVE
 if START_FRESH:
@@ -88,7 +90,7 @@ print(dbutils.fs.head(first_json, 700))
 
 # COMMAND ----------
 
-# DBTITLE 1,📘 Example: Auto Loader → lab_bronze_orders (Python)
+# DBTITLE 1,📘 Example: Auto Loader → endtoend_bronze_orders_fact (Python)
 (
     spark.readStream.format("cloudFiles")
     .option("cloudFiles.format", "json")
@@ -101,12 +103,13 @@ print(dbutils.fs.head(first_json, 700))
     )
     .writeStream.option("checkpointLocation", f"{LAB_CHECKPOINTS}/bronze_orders")
     .trigger(availableNow=True)
-    .toTable("lab_bronze_orders")
+    .toTable("endtoend_bronze_orders_fact")
     .awaitTermination()
 )
 
-bronze_orders = spark.table("lab_bronze_orders")
-print(f"lab_bronze_orders: {bronze_orders.count():,} rows")
+spark.sql("COMMENT ON TABLE endtoend_bronze_orders_fact IS 'December 2025 order lines exactly as delivered (JSON), with lineage columns'")
+bronze_orders = spark.table("endtoend_bronze_orders_fact")
+print(f"endtoend_bronze_orders_fact: {bronze_orders.count():,} rows")
 bronze_orders.printSchema()
 
 # COMMAND ----------
@@ -114,7 +117,7 @@ bronze_orders.printSchema()
 # MAGIC %md
 # MAGIC ### 1c · 🧑‍💻 Your turn: land the dealer list in bronze (Python)
 # MAGIC
-# MAGIC Load `raw_files/lab/dealers_csv/` into a table called **`lab_bronze_dealers`**:
+# MAGIC Load `raw_files/lab/dealers_csv/` into a table called **`endtoend_bronze_dealers_dim`**:
 # MAGIC * read the CSV with its header row and keep **every column as a string** (don't infer types)
 # MAGIC * add the same two lineage columns as the example: **`_source_file`** and **`_ingested_at`**
 # MAGIC * keep **all** rows, including duplicates (that's silver's job)
@@ -125,19 +128,19 @@ bronze_orders.printSchema()
 # MAGIC
 # MAGIC > 🧞 **Genie Code prompt:** *"Read the CSV files in the folder in `LAB_RAW + '/dealers_csv'` with PySpark, keeping
 # MAGIC > all columns as strings. Add `_source_file` from `_metadata.file_path` and `_ingested_at` with the current
-# MAGIC > timestamp, then overwrite the Delta table `lab_bronze_dealers`."*
+# MAGIC > timestamp, then overwrite the Delta table `endtoend_bronze_dealers_dim`."*
 
 # COMMAND ----------
 
-# DBTITLE 1,🧑‍💻 Your turn: lab_bronze_dealers (Python)
+# DBTITLE 1,🧑‍💻 Your turn: endtoend_bronze_dealers_dim (Python)
 # Write your code here: read f"{LAB_RAW}/dealers_csv", add _source_file and _ingested_at,
-# and overwrite the table lab_bronze_dealers.
+# and overwrite the table endtoend_bronze_dealers_dim.
 
 pass
 
 # COMMAND ----------
 
-# DBTITLE 1,✅ Check: lab_bronze_dealers
+# DBTITLE 1,✅ Check: endtoend_bronze_dealers_dim
 check("bronze_dealers")
 
 # COMMAND ----------
@@ -161,7 +164,7 @@ check("bronze_dealers")
 # MAGIC   count_if(dealer_id IS NULL)                                                 AS missing_dealers,
 # MAGIC   count(DISTINCT channel)                                                     AS channel_spellings,
 # MAGIC   count_if(_rescued_data IS NOT NULL)                                         AS rescued_rows
-# MAGIC FROM lab_bronze_orders
+# MAGIC FROM endtoend_bronze_orders_fact
 
 # COMMAND ----------
 
@@ -180,10 +183,10 @@ check("bronze_dealers")
 
 # COMMAND ----------
 
-# DBTITLE 1,📘 Example: lab_silver_orders + lab_quarantine_orders (SQL)
+# DBTITLE 1,📘 Example: endtoend_silver_orders_fact + endtoend_quarantine_orders_fact (SQL)
 # MAGIC %sql
 # MAGIC -- 1 + 2: type and standardize (bad values become NULL, nothing fails)
-# MAGIC CREATE OR REPLACE TEMP VIEW lab_orders_typed AS
+# MAGIC CREATE OR REPLACE TEMP VIEW endtoend_orders_typed AS
 # MAGIC SELECT
 # MAGIC   try_cast(order_id AS BIGINT)                                         AS order_id,
 # MAGIC   coalesce(try_to_timestamp(order_ts, "yyyy-MM-dd'T'HH:mm:ss'Z'"),
@@ -199,19 +202,19 @@ check("bronze_dealers")
 # MAGIC   try_to_timestamp(sent_at, "yyyy-MM-dd'T'HH:mm:ss'Z'")                AS sent_at,
 # MAGIC   _source_file,
 # MAGIC   _ingested_at
-# MAGIC FROM lab_bronze_orders;
+# MAGIC FROM endtoend_bronze_orders_fact;
 # MAGIC
 # MAGIC -- 3: keep the rows that pass every rule, latest version of each order
-# MAGIC CREATE OR REPLACE TABLE lab_silver_orders
+# MAGIC CREATE OR REPLACE TABLE endtoend_silver_orders_fact
 # MAGIC COMMENT 'December 2025 order lines: typed, cleaned, one row per order_id'
 # MAGIC AS
 # MAGIC SELECT *, quantity * unit_price * (1 - discount_pct) AS net_revenue
-# MAGIC FROM lab_orders_typed
+# MAGIC FROM endtoend_orders_typed
 # MAGIC WHERE order_ts IS NOT NULL AND dealer_id IS NOT NULL AND quantity > 0 AND unit_price IS NOT NULL
 # MAGIC QUALIFY row_number() OVER (PARTITION BY order_id ORDER BY sent_at DESC) = 1;
 # MAGIC
 # MAGIC -- 4: quarantine the rest, with the reason
-# MAGIC CREATE OR REPLACE TABLE lab_quarantine_orders
+# MAGIC CREATE OR REPLACE TABLE endtoend_quarantine_orders_fact
 # MAGIC COMMENT 'Order lines that failed a silver rule'
 # MAGIC AS
 # MAGIC SELECT *,
@@ -219,11 +222,11 @@ check("bronze_dealers")
 # MAGIC        WHEN dealer_id IS NULL THEN 'missing dealer'
 # MAGIC        WHEN quantity IS NULL OR quantity <= 0 THEN 'invalid quantity'
 # MAGIC        WHEN unit_price IS NULL THEN 'unparseable price' END AS reject_reason
-# MAGIC FROM lab_orders_typed
+# MAGIC FROM endtoend_orders_typed
 # MAGIC WHERE order_ts IS NULL OR dealer_id IS NULL OR quantity IS NULL OR quantity <= 0 OR unit_price IS NULL;
 # MAGIC
-# MAGIC SELECT 'silver' AS layer, count(*) AS rows FROM lab_silver_orders
-# MAGIC UNION ALL SELECT concat('quarantine: ', reject_reason), count(*) FROM lab_quarantine_orders GROUP BY reject_reason
+# MAGIC SELECT 'silver' AS layer, count(*) AS rows FROM endtoend_silver_orders_fact
+# MAGIC UNION ALL SELECT concat('quarantine: ', reject_reason), count(*) FROM endtoend_quarantine_orders_fact GROUP BY reject_reason
 
 # COMMAND ----------
 
@@ -240,13 +243,13 @@ check("bronze_dealers")
 
 # DBTITLE 1,📘 Example: CHECK constraints catch a bad write (Python + SQL)
 for name, rule in [("positive_quantity", "quantity > 0"), ("known_dealer", "dealer_id IS NOT NULL")]:
-    spark.sql(f"ALTER TABLE lab_silver_orders DROP CONSTRAINT IF EXISTS {name}")
-    spark.sql(f"ALTER TABLE lab_silver_orders ADD CONSTRAINT {name} CHECK ({rule})")
+    spark.sql(f"ALTER TABLE endtoend_silver_orders_fact DROP CONSTRAINT IF EXISTS {name}")
+    spark.sql(f"ALTER TABLE endtoend_silver_orders_fact ADD CONSTRAINT {name} CHECK ({rule})")
     print(f"constraint {name}: CHECK ({rule})")
 
 try:
     spark.sql("""
-        INSERT INTO lab_silver_orders (order_id, order_ts, dealer_id, part_id, quantity, unit_price, discount_pct, channel)
+        INSERT INTO endtoend_silver_orders_fact (order_id, order_ts, dealer_id, part_id, quantity, unit_price, discount_pct, channel)
         VALUES (1, current_timestamp(), 7, 42, -5, 10.0, 0.0, 'Online')""")
     print("⚠️  the bad row was accepted")
 except Exception as e:
@@ -257,7 +260,7 @@ except Exception as e:
 # MAGIC %md
 # MAGIC ### 2c · 🧑‍💻 Your turn: clean the dealers (SQL)
 # MAGIC
-# MAGIC Create **`lab_silver_dealers`** from `lab_bronze_dealers`, with **one row per `dealer_id`**:
+# MAGIC Create **`endtoend_silver_dealers_dim`** from `endtoend_bronze_dealers_dim`, with **one row per `dealer_id`**:
 # MAGIC * `dealer_id` as an `INT`, `updated_at` as a `TIMESTAMP`
 # MAGIC * when a dealer appears more than once, keep the row with the **latest `updated_at`** (the old one has a stale tier)
 # MAGIC * `region` trimmed and in title case (`"  MIDWEST"` → `Midwest`), `state` trimmed and upper case
@@ -266,24 +269,47 @@ except Exception as e:
 # MAGIC
 # MAGIC The silver orders example above has every function you need (`try_cast`, `trim`, `initcap`, `QUALIFY`).
 # MAGIC
-# MAGIC > 🧞 **Genie Code prompt:** *"Write a Databricks SQL `CREATE OR REPLACE TABLE lab_silver_dealers AS SELECT ...` from
-# MAGIC > `lab_bronze_dealers` that keeps one row per dealer_id with the latest updated_at, casts dealer_id to INT and
+# MAGIC > 🧞 **Genie Code prompt:** *"Write a Databricks SQL `CREATE OR REPLACE TABLE endtoend_silver_dealers_dim AS SELECT ...` from
+# MAGIC > `endtoend_bronze_dealers_dim` that keeps one row per dealer_id with the latest updated_at, casts dealer_id to INT and
 # MAGIC > updated_at to TIMESTAMP, trims and title-cases region, upper-cases state, and replaces blank dealer_name with
 # MAGIC > 'Unknown dealer ' followed by the id."*
 
 # COMMAND ----------
 
-# DBTITLE 1,🧑‍💻 Your turn: lab_silver_dealers (SQL)
+# DBTITLE 1,🧑‍💻 Your turn: endtoend_silver_dealers_dim (SQL)
 # MAGIC %sql
-# MAGIC -- Write your CREATE OR REPLACE TABLE lab_silver_dealers AS SELECT ... statement here,
+# MAGIC -- Write your CREATE OR REPLACE TABLE endtoend_silver_dealers_dim AS SELECT ... statement here,
 # MAGIC -- replacing the placeholder query below.
 # MAGIC
-# MAGIC SELECT 'Replace this cell with your CREATE OR REPLACE TABLE lab_silver_dealers statement' AS todo
+# MAGIC SELECT 'Replace this cell with your CREATE OR REPLACE TABLE endtoend_silver_dealers_dim statement' AS todo
 
 # COMMAND ----------
 
-# DBTITLE 1,✅ Check: lab_silver_dealers
+# DBTITLE 1,✅ Check: endtoend_silver_dealers_dim
 check("silver_dealers")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 2d · Bring in the parts reference
+# MAGIC
+# MAGIC Not every silver table starts in bronze. The parts catalog is maintained in another system and is already a
+# MAGIC clean Delta table (`dim_part`, shared with the rest of the workshop). Conform it into the lab with only the
+# MAGIC columns gold needs. The lab's tables then follow one convention: `endtoend_<layer>_<entity>_<fact|dim>`.
+# MAGIC Facts hold events (order lines, daily sales) and dims hold the things events refer to (dealers, parts).
+
+# COMMAND ----------
+
+# DBTITLE 1,📘 Example: endtoend_silver_parts_dim (SQL)
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TABLE endtoend_silver_parts_dim
+# MAGIC COMMENT 'Parts reference for the end-to-end lab: one row per part, only the columns gold needs'
+# MAGIC AS
+# MAGIC SELECT part_id, part_name, category, list_price, unit_cost
+# MAGIC FROM dim_part;
+# MAGIC
+# MAGIC SELECT category, count(*) AS parts, round(avg(unit_cost / list_price), 3) AS avg_cost_ratio
+# MAGIC FROM endtoend_silver_parts_dim GROUP BY category ORDER BY category
 
 # COMMAND ----------
 
@@ -299,15 +325,15 @@ check("silver_dealers")
 # COMMAND ----------
 
 # DBTITLE 1,Make sure the earlier exercises exist
-# Gold builds on your silver dealers. If an exercise isn't finished yet, this builds it from the reference
+# Gold builds on your silver dealers and the parts dim. If one isn't there yet, this builds it from the reference
 # solution, so the example below always works.
-require("bronze_dealers", "silver_dealers")
+require("bronze_dealers", "silver_dealers", "silver_parts")
 
 # COMMAND ----------
 
-# DBTITLE 1,📘 Example: lab_gold_daily_dealer_sales (SQL)
+# DBTITLE 1,📘 Example: endtoend_gold_daily_dealer_sales_fact (SQL)
 # MAGIC %sql
-# MAGIC CREATE OR REPLACE TABLE lab_gold_daily_dealer_sales
+# MAGIC CREATE OR REPLACE TABLE endtoend_gold_daily_dealer_sales_fact
 # MAGIC COMMENT 'Daily orders, units, net revenue and margin per dealer, December 2025'
 # MAGIC AS
 # MAGIC SELECT
@@ -320,12 +346,12 @@ require("bronze_dealers", "silver_dealers")
 # MAGIC   sum(o.quantity)                                          AS units,
 # MAGIC   round(sum(o.net_revenue), 2)                             AS net_revenue,
 # MAGIC   round(sum(o.net_revenue - o.quantity * p.unit_cost), 2)  AS margin
-# MAGIC FROM lab_silver_orders o
-# MAGIC JOIN lab_silver_dealers d ON o.dealer_id = d.dealer_id
-# MAGIC JOIN dim_part p           ON o.part_id = p.part_id
+# MAGIC FROM endtoend_silver_orders_fact o
+# MAGIC JOIN endtoend_silver_dealers_dim d ON o.dealer_id = d.dealer_id
+# MAGIC JOIN endtoend_silver_parts_dim p ON o.part_id = p.part_id
 # MAGIC GROUP BY ALL;
 # MAGIC
-# MAGIC SELECT * FROM lab_gold_daily_dealer_sales ORDER BY order_date, net_revenue DESC LIMIT 10
+# MAGIC SELECT * FROM endtoend_gold_daily_dealer_sales_fact ORDER BY order_date, net_revenue DESC LIMIT 10
 
 # COMMAND ----------
 
@@ -333,7 +359,7 @@ require("bronze_dealers", "silver_dealers")
 # MAGIC ### 3b · 🧑‍💻 Your turn: margin by region and category (SQL)
 # MAGIC
 # MAGIC The merchandising team wants to know which part categories make money in which regions. Create
-# MAGIC **`lab_gold_category_region`** with one row per **`region`** and **`category`** (from `dim_part`) and these columns:
+# MAGIC **`endtoend_gold_category_region_fact`** with one row per **`region`** and **`category`** (from `endtoend_silver_parts_dim`) and these columns:
 # MAGIC
 # MAGIC | column | definition |
 # MAGIC |---|---|
@@ -343,22 +369,22 @@ require("bronze_dealers", "silver_dealers")
 # MAGIC | `margin` | sum of `net_revenue - quantity * unit_cost`, rounded to 2 decimals |
 # MAGIC | `margin_pct` | `100 * margin / net_revenue`, rounded to 2 decimals |
 # MAGIC
-# MAGIC > 🧞 **Genie Code prompt:** *"Create a gold table `lab_gold_category_region` by joining `lab_silver_orders` to
-# MAGIC > `lab_silver_dealers` on dealer_id and to `dim_part` on part_id, grouped by region and category, with orders,
+# MAGIC > 🧞 **Genie Code prompt:** *"Create a gold table `endtoend_gold_category_region_fact` by joining `endtoend_silver_orders_fact` to
+# MAGIC > `endtoend_silver_dealers_dim` on dealer_id and to `endtoend_silver_parts_dim` on part_id, grouped by region and category, with orders,
 # MAGIC > units, net_revenue, margin (net_revenue minus quantity times unit_cost) and margin_pct, all rounded to 2 decimals."*
 
 # COMMAND ----------
 
-# DBTITLE 1,🧑‍💻 Your turn: lab_gold_category_region (SQL)
+# DBTITLE 1,🧑‍💻 Your turn: endtoend_gold_category_region_fact (SQL)
 # MAGIC %sql
-# MAGIC -- Write your CREATE OR REPLACE TABLE lab_gold_category_region AS SELECT ... statement here,
+# MAGIC -- Write your CREATE OR REPLACE TABLE endtoend_gold_category_region_fact AS SELECT ... statement here,
 # MAGIC -- replacing the placeholder query below.
 # MAGIC
-# MAGIC SELECT 'Replace this cell with your CREATE OR REPLACE TABLE lab_gold_category_region statement' AS todo
+# MAGIC SELECT 'Replace this cell with your CREATE OR REPLACE TABLE endtoend_gold_category_region_fact statement' AS todo
 
 # COMMAND ----------
 
-# DBTITLE 1,✅ Check: lab_gold_category_region
+# DBTITLE 1,✅ Check: endtoend_gold_category_region_fact
 check("gold_category_region")
 
 # COMMAND ----------
@@ -378,7 +404,7 @@ check("gold_category_region")
 # DBTITLE 1,📘 Example: top 10 dealers in December (SQL)
 # MAGIC %sql
 # MAGIC SELECT dealer_name, region, dealer_tier, sum(orders) AS orders, round(sum(net_revenue), 0) AS net_revenue
-# MAGIC FROM lab_gold_daily_dealer_sales
+# MAGIC FROM endtoend_gold_daily_dealer_sales_fact
 # MAGIC GROUP BY ALL
 # MAGIC ORDER BY net_revenue DESC
 # MAGIC LIMIT 10
@@ -389,7 +415,7 @@ check("gold_category_region")
 # MAGIC %sql
 # MAGIC WITH weekly AS (
 # MAGIC   SELECT region, date_trunc('week', order_date) AS week, sum(net_revenue) AS net_revenue
-# MAGIC   FROM lab_gold_daily_dealer_sales
+# MAGIC   FROM endtoend_gold_daily_dealer_sales_fact
 # MAGIC   GROUP BY ALL
 # MAGIC )
 # MAGIC SELECT region, week, round(net_revenue, 0) AS net_revenue,
@@ -403,9 +429,9 @@ check("gold_category_region")
 # MAGIC ### 4a · 🧑‍💻 Your turn: the top 3 dealers in every region (SQL)
 # MAGIC
 # MAGIC Create a temp view **`answer_top_dealers`** with the columns `region`, `dealer_name`, `net_revenue` (December
-# MAGIC total) and `revenue_rank` (1 = highest in its region), keeping ranks 1–3 only. Use `lab_gold_daily_dealer_sales`.
+# MAGIC total) and `revenue_rank` (1 = highest in its region), keeping ranks 1–3 only. Use `endtoend_gold_daily_dealer_sales_fact`.
 # MAGIC
-# MAGIC > 🧞 **Genie Code prompt:** *"Using `lab_gold_daily_dealer_sales`, create a temp view `answer_top_dealers` with the top
+# MAGIC > 🧞 **Genie Code prompt:** *"Using `endtoend_gold_daily_dealer_sales_fact`, create a temp view `answer_top_dealers` with the top
 # MAGIC > 3 dealers by total net_revenue in each region: columns region, dealer_name, net_revenue, revenue_rank. Use a
 # MAGIC > window function partitioned by region."*
 
@@ -431,9 +457,9 @@ check("top_dealers")
 # MAGIC Marketing ran online promotions in December. Create a temp view **`answer_online_share`** with the 5 days
 # MAGIC where the **Online** channel had the highest share of net revenue: columns `order_date` and
 # MAGIC `online_share_pct` (0–100, rounded to 2 decimals). The gold table doesn't have the channel, so this
-# MAGIC question goes back to **silver** (`lab_silver_orders`). Knowing which layer can answer a question is part of the skill.
+# MAGIC question goes back to **silver** (`endtoend_silver_orders_fact`). Knowing which layer can answer a question is part of the skill.
 # MAGIC
-# MAGIC > 🧞 **Genie Code prompt:** *"From `lab_silver_orders`, compute for each day (to_date of order_ts) the percentage of
+# MAGIC > 🧞 **Genie Code prompt:** *"From `endtoend_silver_orders_fact`, compute for each day (to_date of order_ts) the percentage of
 # MAGIC > net_revenue where channel = 'Online', rounded to 2 decimals, and create a temp view `answer_online_share` with the 5
 # MAGIC > days with the highest share (columns order_date, online_share_pct)."*
 
@@ -473,16 +499,16 @@ datasets = [
     dataset("kpis", "December KPIs", """
         SELECT round(sum(net_revenue) / 1e6, 2) AS net_revenue_musd, sum(orders) AS orders,
                round(100 * sum(margin) / sum(net_revenue), 1) AS margin_pct
-        FROM lab_gold_daily_dealer_sales"""),
+        FROM endtoend_gold_daily_dealer_sales_fact"""),
     dataset("daily", "Daily revenue by region", """
         SELECT order_date, region, sum(net_revenue) AS net_revenue
-        FROM lab_gold_daily_dealer_sales GROUP BY ALL"""),
+        FROM endtoend_gold_daily_dealer_sales_fact GROUP BY ALL"""),
     dataset("tiers", "Revenue by dealer tier", """
         SELECT dealer_tier, sum(net_revenue) AS net_revenue
-        FROM lab_gold_daily_dealer_sales GROUP BY ALL"""),
+        FROM endtoend_gold_daily_dealer_sales_fact GROUP BY ALL"""),
     dataset("dealers", "Top dealers", """
         SELECT dealer_name, region, dealer_tier, sum(orders) AS orders, round(sum(net_revenue), 0) AS net_revenue
-        FROM lab_gold_daily_dealer_sales GROUP BY ALL ORDER BY net_revenue DESC LIMIT 20"""),
+        FROM endtoend_gold_daily_dealer_sales_fact GROUP BY ALL ORDER BY net_revenue DESC LIMIT 20"""),
 ]
 widgets = [
     text("title", "## Apex Motorsports Parts · December 2025\nBuilt from the gold tables of the bronze-to-gold lab.", 0, 0),
@@ -501,22 +527,22 @@ dashboard_id, dashboard_url = publish_dashboard(datasets, widgets)
 # MAGIC %md
 # MAGIC ### 5a · 🧑‍💻 Your turn: put your gold table on the dashboard (Python)
 # MAGIC
-# MAGIC Add a chart built on **your** `lab_gold_category_region` table: for example, a bar chart of `margin_pct` by
+# MAGIC Add a chart built on **your** `endtoend_gold_category_region_fact` table: for example, a bar chart of `margin_pct` by
 # MAGIC `category`, colored by `region`. Add one dataset to `my_datasets` and one widget to `my_widgets`, then run the
 # MAGIC cell to republish. Place the widget below the others (`y=17`, full width `w=6`).
 # MAGIC
 # MAGIC > 🧞 **Genie Code prompt:** *"Using the helper functions `dataset()` and `bar()` defined in this notebook, add a dataset
-# MAGIC > named 'categories' that selects region, category and margin_pct from `lab_gold_category_region`, and a bar widget
+# MAGIC > named 'categories' that selects region, category and margin_pct from `endtoend_gold_category_region_fact`, and a bar widget
 # MAGIC > that shows margin_pct by category colored by region at x=0, y=17, w=6, then call publish_dashboard with
 # MAGIC > datasets + my_datasets and widgets + my_widgets."*
 # MAGIC
 # MAGIC **Prefer clicking?** Open the dashboard, click **Edit draft**, and ask the dashboard's assistant: *"Add a bar
-# MAGIC chart of margin_pct by category, colored by region, from lab_gold_category_region."* Then publish.
+# MAGIC chart of margin_pct by category, colored by region, from endtoend_gold_category_region_fact."* Then publish.
 
 # COMMAND ----------
 
 # DBTITLE 1,🧑‍💻 Your turn: add a widget and republish (Python)
-my_datasets = []  # e.g. dataset("categories", "Margin by category", "SELECT ... FROM lab_gold_category_region")
+my_datasets = []  # e.g. dataset("categories", "Margin by category", "SELECT ... FROM endtoend_gold_category_region_fact")
 my_widgets = []   # e.g. bar("b_categories", "categories", "category", "margin_pct", "Margin % by category", x=0, y=17, w=6, color="region")
 
 publish_dashboard(datasets + my_datasets, widgets + my_widgets)
@@ -533,13 +559,13 @@ check("dashboard")
 # MAGIC
 # MAGIC | | |
 # MAGIC |---|---|
-# MAGIC | 🥉 bronze | `lab_bronze_orders` (Auto Loader, incremental) and `lab_bronze_dealers` (batch), both with lineage columns |
-# MAGIC | 🥈 silver | `lab_silver_orders` and `lab_silver_dealers`: typed, standardized, de-duplicated, protected by CHECK constraints; rejects in `lab_quarantine_orders` |
-# MAGIC | 🥇 gold | `lab_gold_daily_dealer_sales` and `lab_gold_category_region`, documented with comments |
+# MAGIC | 🥉 bronze | `endtoend_bronze_orders_fact` (Auto Loader, incremental) and `endtoend_bronze_dealers_dim` (batch), both with lineage columns |
+# MAGIC | 🥈 silver | `endtoend_silver_orders_fact`, `endtoend_silver_dealers_dim` and `endtoend_silver_parts_dim`: typed, standardized, de-duplicated, protected by CHECK constraints; rejects in `endtoend_quarantine_orders_fact` |
+# MAGIC | 🥇 gold | `endtoend_gold_daily_dealer_sales_fact` and `endtoend_gold_category_region_fact`, documented with comments |
 # MAGIC | 📊 serving | SQL answers and a published AI/BI dashboard |
 # MAGIC
 # MAGIC **Look around before you move on**
-# MAGIC * Open `lab_gold_category_region` in **Catalog Explorer** → **Lineage** to see the path from the raw files to the dashboard.
+# MAGIC * Open `endtoend_gold_category_region_fact` in **Catalog Explorer** → **Lineage** to see the path from the raw files to the dashboard.
 # MAGIC * Rerun the Auto Loader cell in 1b: it processes **0** new files, because the checkpoint remembers what it already ingested.
 # MAGIC * Ask Genie Code: *"Explain what each layer of this notebook does and what could break in production."*
 # MAGIC
@@ -548,9 +574,9 @@ check("dashboard")
 # COMMAND ----------
 
 # DBTITLE 1,Summary of the lab tables
-tag_workshop_objects(CATALOG, SCHEMA, WORKSHOP_TAG)  # tag the new lab_* tables like the rest of the workshop
+tag_workshop_objects(CATALOG, SCHEMA, WORKSHOP_TAG)  # tag the new endtoend_* tables like the rest of the workshop
 display(spark.sql(f"""
     SELECT table_name, comment
     FROM `{CATALOG}`.information_schema.tables
-    WHERE table_schema = '{SCHEMA}' AND table_name LIKE 'lab_%'
+    WHERE table_schema = '{SCHEMA}' AND table_name LIKE 'endtoend\\_%'
     ORDER BY table_name"""))

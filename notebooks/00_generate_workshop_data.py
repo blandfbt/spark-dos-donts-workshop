@@ -446,7 +446,7 @@ stale = (
 current.unionByName(stale).orderBy(F.rand(95)).coalesce(1).write.option("header", True).csv(
     replace_folder(f"{lab_root}/dealers_csv")
 )
-dbutils.fs.rm(f"{VOLUME}/_checkpoints/lab", True)
+dbutils.fs.rm(f"{VOLUME}/_checkpoints/endtoend", True)
 print(f"lab orders: {lab_orders.count():,} + {resent.count():,} re-sent · dealers file written")
 
 # COMMAND ----------

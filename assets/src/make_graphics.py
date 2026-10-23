@@ -354,28 +354,28 @@ def write_layout():
 
 
 def medallion_lab():
-    s = Svg(1000, 330)
-    s.text(500, 30, "The bronze-to-gold lab", 18, INK, "bold")
+    s = Svg(1290, 380)
+    s.text(645, 30, "The end-to-end lab: endtoend_<layer>_<entity>_<fact|dim>", 18, INK, "bold")
     cols = [
         (20, "Raw files", "volume raw_files/lab/", ["orders_json/ (JSON)", "dealers_csv/ (CSV)"], GREY_BG, MUTED),
-        (215, "Bronze", "as delivered + lineage", ["lab_bronze_orders", "lab_bronze_dealers"], "#f6e7d8", "#a8642a"),
-        (410, "Silver", "typed · clean · deduped", ["lab_silver_orders", "lab_silver_dealers", "lab_quarantine_orders"], "#eef0f2", "#7d8a96"),
-        (605, "Gold", "aggregated for a purpose", ["lab_gold_daily_dealer_sales", "lab_gold_category_region"], "#fbf3d5", "#b08d1a"),
-        (800, "Serve", "answers and visuals", ["SQL queries", "AI/BI dashboard"], BLUE_BG, BLUE),
+        (270, "Bronze", "as delivered + lineage", ["endtoend_bronze_orders_fact", "endtoend_bronze_dealers_dim"], "#f6e7d8", "#a8642a"),
+        (520, "Silver", "typed · clean · deduped", ["endtoend_silver_orders_fact", "endtoend_silver_dealers_dim",
+                                                   "endtoend_silver_parts_dim", "endtoend_quarantine_orders_fact"], "#eef0f2", "#7d8a96"),
+        (770, "Gold", "aggregated for a purpose", ["endtoend_gold_daily_dealer_sales_fact", "endtoend_gold_category_region_fact"], "#fbf3d5", "#b08d1a"),
+        (1020, "Serve", "answers and visuals", ["SQL queries", "AI/BI dashboard"], BLUE_BG, BLUE),
     ]
     for x, title, sub, items, fill, stroke in cols:
-        s.rect(x, 55, 180, 250, fill, stroke, 12, 2)
-        s.text(x + 90, 85, title, 17, stroke, "bold")
-        s.text(x + 90, 106, sub, 11.5, MUTED)
+        s.rect(x, 55, 226, 295, fill, stroke, 12, 2)
+        s.text(x + 113, 85, title, 17, stroke, "bold")
+        s.text(x + 113, 106, sub, 11.5, MUTED)
         for i, it in enumerate(items):
-            s.rect(x + 10, 125 + i * 52, 160, 40, "#fff", stroke, 6, 1)
-            s.text(x + 90, 150 + i * 52, it, 10.5 if len(it) > 22 else 11.5, INK, "bold")
-    for x in (200, 395, 590, 785):
-        s.arrow(x + 2, 180, x + 13, 180, MUTED, 2)
-    labels = [(117, "Auto Loader / spark.read"), (312, "SQL: try_cast, QUALIFY"), (507, "SQL: joins + GROUP BY"),
-              (702, "SQL, dashboard datasets")]
-    for x, t in labels:
-        s.text(x + 90, 322, t, 11, MUTED, italic=True)
+            s.rect(x + 8, 125 + i * 52, 210, 40, "#fff", stroke, 6, 1)
+            s.text(x + 113, 150 + i * 52, it, 9.8 if len(it) > 30 else 11, INK, "bold")
+    for x in (270, 520, 770, 1020):
+        s.arrow(x - 21, 200, x - 4, 200, MUTED, 2)
+    for x, t in [(270, "Auto Loader / spark.read"), (520, "SQL: try_cast, QUALIFY"), (770, "SQL: joins + GROUP BY"),
+                 (1020, "SQL, dashboard datasets")]:
+        s.text(x - 10, 372, t, 11, MUTED, italic=True)
     save("medallion_lab", s)
 
 
