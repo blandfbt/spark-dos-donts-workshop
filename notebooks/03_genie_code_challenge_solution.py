@@ -1,10 +1,10 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 02 · Genie Code challenge: reference solution
+# MAGIC # 03 · Genie Code challenge: reference solution
 # MAGIC
 # MAGIC ## What was wrong with the slow version
 # MAGIC
-# MAGIC Try the challenge in section 11 of `01_spark_dos_and_donts` before you read this.
+# MAGIC Try the challenge in section 11 of `02_spark_dos_and_donts` before you read this.
 # MAGIC
 # MAGIC `build_dealer_scorecard_slow` produces the right numbers, but the way it gets there is the problem:
 # MAGIC

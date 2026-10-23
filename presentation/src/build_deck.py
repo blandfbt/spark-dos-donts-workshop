@@ -575,8 +575,8 @@ SLIDES = [
 
 databricks bundle run -t dev -p &lt;profile&gt; \\
   spark_dos_donts_setup<span class="cm">   # ~5 min: 100M rows + raw files</span></div>""" + bullets([
-                "Open <code>01_spark_dos_and_donts</code> on serverless (env 5+)",
-                "Each topic: <b>why</b>, then a timed <b>Don't</b> and <b>Do</b>",
+                "<code>01_bronze_to_gold_lab</code>: bronze → silver → gold, SQL and a dashboard, hands-on",
+                "<code>02_spark_dos_and_donts</code>: each topic is a <b>why</b>, then a timed <b>Don't</b> and <b>Do</b>",
                 "Results land in a scoreboard table; every section can resume after a restart",
             ], "tight") + """</div>
       <div class="col plain genie">

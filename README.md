@@ -1,6 +1,12 @@
 # Spark Do's & Don'ts workshop
 
-A hands-on workshop, deployable as a Databricks Asset Bundle. It runs the most common Spark anti-patterns
+A hands-on workshop, deployable as a Databricks Asset Bundle, in two parts:
+
+1. **Bronze-to-gold lab** (`01_bronze_to_gold_lab`, ~45 min). Participants take messy raw JSON and CSV files
+   through bronze, silver and gold tables, answer questions in SQL and publish an AI/BI dashboard. Every
+   step is a 📘 worked example followed by a 🧑‍💻 *your turn* cell (with a 🧞 Genie Code prompt) and a ✅ check.
+   Python and SQL cells are mixed throughout.
+2. **Spark Do's & Don'ts** (`02_spark_dos_and_donts`). It runs the most common Spark anti-patterns
 **side by side** with the fix, on realistic data, using serverless compute. Each section has a
 📖 *Why* cell (with a diagram), a 🚫 *Don't* cell that really hurts (slow, memory-hungry or wrong), and a
 ✅ *Do* cell that gives the same answer properly. Every run is timed and collected into a scoreboard.
@@ -15,15 +21,33 @@ Unity Catalog volume.
 databricks.yml                               bundle, variables (catalog, schema, ...), targets
 resources/jobs.yml                           setup job + end-to-end workshop job (serverless)
 notebooks/00_generate_workshop_data.py       generates all tables and raw files (setup job)
-notebooks/01_spark_dos_and_donts.py          ← the workshop
-notebooks/02_genie_code_challenge_solution.py reference solution for the challenge
+notebooks/01_bronze_to_gold_lab.py           ← part 1: the hands-on lab
+notebooks/02_spark_dos_and_donts.py          ← part 2: the do's and don'ts
+notebooks/03_genie_code_challenge_solution.py reference solution for the challenge in part 2
 notebooks/config.py                          widgets, table names, timing/scoreboard helpers (%run)
+notebooks/lab_helpers.py                     lab checks, reference solutions, reveal/catch_up, dashboard builders
 notebooks/images/                            diagrams used in the markdown cells
 assets/src/make_graphics.py                  regenerates the diagrams (SVG -> PNG, needs rsvg-convert)
 presentation/                                15-20 min slide deck (single HTML + PDF) that goes with the workshop
 ```
 
 ## What's covered
+
+### Part 1 · Bronze-to-gold lab
+
+| step | 📘 example | 🧑‍💻 your turn |
+|---|---|---|
+| 1 · Bronze | profile the raw files; Auto Loader ingests the JSON orders as strings with lineage columns (Python) | land the dealer CSV in bronze (Python) |
+| 2 · Silver | type, standardize, de-duplicate with `QUALIFY`, quarantine rejects (SQL); Delta CHECK constraints catch a bad write (Python + SQL) | clean and de-duplicate the dealers (SQL) |
+| 3 · Gold | daily sales per dealer (SQL) | margin by region × category (SQL) |
+| 4 · SQL | top dealers; week-over-week change with `LAG` | top 3 dealers per region; top 5 days by online share |
+| 5 · Dashboard | publish an AI/BI dashboard from code: counters, line, bar, table (Python) | add a chart of your gold table (code, or the dashboard assistant) |
+
+`check("<exercise>")` verifies each result. When someone is stuck, `reveal("<exercise>")` prints a solution
+and `catch_up("<exercise>")` builds it so they can keep going. Examples that depend on an exercise build
+it automatically if it's missing.
+
+### Part 2 · Spark Do's & Don'ts
 
 | # | section | Don't → Do |
 |---|---|---|
@@ -55,7 +79,8 @@ Spark and Databricks documentation behind the advice.
 ## Prerequisites
 
 * Databricks CLI ≥ 0.250 (`databricks -v`).
-* A workspace with Unity Catalog, serverless jobs and serverless notebooks, and Genie Code (Databricks Assistant) enabled for section 11.
+* A workspace with Unity Catalog, serverless jobs and serverless notebooks, and Genie Code (Databricks Assistant) enabled.
+* A SQL warehouse (serverless recommended) for the lab's dashboard. The lab uses the first serverless warehouse it finds, or the `warehouse_id` you set.
 * An existing catalog on which you have `USE CATALOG` and `CREATE SCHEMA` (or an existing schema with `CREATE TABLE` and `CREATE VOLUME`).
 * About 10 GB of storage for the generated data at the default size.
 
@@ -84,15 +109,17 @@ Instead of passing `--var` and `-p` every time, you can set them once in `databr
 
 ## Run the workshop
 
-1. In the workspace, open
-   `/Workspace/Users/<you>/.bundle/spark_dos_donts_workshop/dev/files/notebooks/01_spark_dos_and_donts`.
-2. Attach **serverless** compute. In the *Environment* side panel, choose environment version **5** or later.
-3. Leave the `catalog`/`schema` widgets empty: the setup job wrote `_workshop_config.json` next to the
+1. In the workspace, open the bundle folder
+   `/Workspace/Users/<you>/.bundle/spark_dos_donts_workshop/dev/files/notebooks/`.
+2. Start with **`01_bronze_to_gold_lab`**, then continue with **`02_spark_dos_and_donts`**.
+3. Attach **serverless** compute. In the *Environment* side panel, choose environment version **5** or later.
+4. Leave the `catalog`/`schema` widgets empty: the setup job wrote `_workshop_config.json` next to the
    notebooks, and `config.py` picks it up. Or fill the widgets in by hand.
-4. Run the cells top to bottom, section by section.
+5. Run the cells top to bottom, section by section. In the lab, leave `auto_solve` at `false`.
 
 **Instructor dry run / pre-warm:** `databricks bundle run -t dev -p <profile> spark_dos_donts_workshop` runs
-notebook 01 and the challenge solution end to end (about 20 minutes, measured) and writes the timings to `workshop_scoreboard`.
+the lab with every exercise auto-solved (and publishes the dashboard), then notebook 02 and the challenge
+solution, and writes the timings to `workshop_scoreboard`.
 
 ### Several participants in one workspace
 
@@ -112,6 +139,7 @@ notebook 01 and the challenge solution end to end (about 20 minutes, measured) a
 | `schema` | `spark_dos_donts` | schema for all tables and the `raw_files` volume (created if missing) |
 | `fact_rows` | `100000000` | size of `fact_orders` (the other tables are fixed size) |
 | `dont_timeout_seconds` | `120` | watchdog limit per Don't (also a notebook widget) |
+| `warehouse_id` | *(empty)* | SQL warehouse for the lab dashboard; empty = first serverless warehouse found |
 | `environment_version` | `5` | serverless environment; ≥ 5 is needed for `df.cache()` |
 | `performance_target` | `PERFORMANCE_OPTIMIZED` | serverless job performance mode |
 

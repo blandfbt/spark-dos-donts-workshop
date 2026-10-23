@@ -19,6 +19,7 @@
 # MAGIC | volume `raw_files/telemetry_small_files` vs `telemetry_compacted` | the same rows as 4,000 tiny vs 4 large Parquet files | the small-files problem |
 # MAGIC | volume `raw_files/daily_order_extracts` | one Parquet folder per day | union-in-a-loop vs. one read |
 # MAGIC | volume `raw_files/orders_landing` | Parquet landing zone | full re-read vs. incremental Auto Loader |
+# MAGIC | volume `raw_files/lab/` | messy December orders (JSON) and dealer list (CSV) | the bronze-to-gold lab |
 # MAGIC
 # MAGIC Every row is generated on the executors from `spark.range` and seeded random functions, so
 # MAGIC nothing is collected on the driver and reruns produce the same data. **Reruns replace** every
@@ -351,6 +352,82 @@ dbutils.fs.rm(f"{VOLUME}/_checkpoints", True)
 for folder in ["orders_csv", "daily_order_extracts", "telemetry_small_files", "telemetry_compacted", "orders_landing"]:
     files = spark.sql(f"LIST '{VOLUME}/{folder}'").count() if folder != "daily_order_extracts" else None
     print(f"{folder:24} {'' if files is None else f'{files:,} entries'}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Raw files for the bronze-to-gold lab
+# MAGIC
+# MAGIC The lab (`01_bronze_to_gold_lab`) starts from raw files, the way partner systems actually deliver them:
+# MAGIC
+# MAGIC | folder | content | problems to fix in silver |
+# MAGIC |---|---|---|
+# MAGIC | `lab/orders_json/` | December 2025 order lines as JSON, ~31 files | ~1% re-sent duplicates (later `sent_at`), 3% US-style timestamps, prices as text (some `$12.50`, some `N/A`), zero/negative quantities, missing dealers, `channel` in mixed case with stray spaces |
+# MAGIC | `lab/dealers_csv/` | the dealer reference list as one CSV | duplicate dealers (an older version with a stale tier), regions in mixed case with spaces, some blank names |
+
+# COMMAND ----------
+
+# DBTITLE 1,Land the lab's messy raw files
+lab_root = f"{VOLUME}/lab"
+december = spark.table(T("fact_orders")).where("order_date >= '2025-12-01'")
+
+lab_orders = (
+    december.withColumn("_r", F.rand(81))
+    .withColumn("sent_at", F.col("order_ts") + F.expr("INTERVAL 3 MINUTES"))
+    .select(
+        F.col("order_id").cast("string").alias("order_id"),
+        F.when(F.rand(82) < 0.03, F.date_format("order_ts", "MM/dd/yyyy HH:mm:ss"))
+        .otherwise(F.date_format("order_ts", "yyyy-MM-dd'T'HH:mm:ss'Z'")).alias("order_ts"),
+        F.col("customer_id").cast("string").alias("customer_id"),
+        F.when(F.rand(83) < 0.003, F.lit(None)).otherwise(F.col("dealer_id").cast("string")).alias("dealer_id"),
+        F.col("part_id").cast("string").alias("part_id"),
+        F.when(F.rand(84) < 0.004, F.element_at(F.array(F.lit("0"), F.lit("-1")), (F.floor(F.rand(85) * 2) + 1).cast("int")))
+        .otherwise(F.col("quantity").cast("string")).alias("quantity"),
+        F.when(F.col("_r") < 0.01, F.format_string("$%.2f", "unit_price"))
+        .when(F.col("_r") < 0.012, F.lit("N/A"))
+        .otherwise(F.format_string("%.2f", "unit_price")).alias("unit_price"),
+        F.col("discount_pct").cast("string").alias("discount_pct"),
+        F.when(F.rand(86) < 0.1, F.lower("channel"))
+        .when(F.rand(87) < 0.1, F.upper("channel"))
+        .when(F.rand(88) < 0.1, F.concat(F.lit(" "), F.col("channel"), F.lit(" ")))
+        .otherwise(F.col("channel")).alias("channel"),
+        "promo_code",
+        F.date_format("sent_at", "yyyy-MM-dd'T'HH:mm:ss'Z'").alias("sent_at"),
+        F.to_date("order_ts").alias("_day"),
+    )
+)
+# ~1% of the orders are sent again later by the upstream system (same order_id, later sent_at)
+resent = (
+    lab_orders.where(F.rand(89) < 0.01)
+    .withColumn("sent_at", F.date_format(F.to_timestamp("sent_at", "yyyy-MM-dd'T'HH:mm:ss'Z'") + F.expr("INTERVAL 2 HOURS"),
+                                         "yyyy-MM-dd'T'HH:mm:ss'Z'"))
+)
+(
+    lab_orders.unionByName(resent).repartition(31, "_day").drop("_day")
+    .write.json(replace_folder(f"{lab_root}/orders_json"))
+)
+
+dealer_rows = spark.table(T("dim_dealer"))
+current = dealer_rows.select(
+    F.col("dealer_id").cast("string").alias("dealer_id"),
+    F.when(F.rand(91) < 0.02, F.lit("")).otherwise(F.col("dealer_name")).alias("dealer_name"),
+    F.when(F.rand(92) < 0.15, F.lower("region"))
+    .when(F.rand(93) < 0.15, F.concat(F.lit("  "), F.upper("region")))
+    .otherwise(F.col("region")).alias("region"),
+    "state",
+    "dealer_tier",
+    F.lit("2025-11-15 08:00:00").alias("updated_at"),
+)
+stale = (
+    current.where(F.rand(94) < 0.10)
+    .withColumn("dealer_tier", F.lit("Standard"))
+    .withColumn("updated_at", F.lit("2024-03-01 08:00:00"))
+)
+current.unionByName(stale).orderBy(F.rand(95)).coalesce(1).write.option("header", True).csv(
+    replace_folder(f"{lab_root}/dealers_csv")
+)
+dbutils.fs.rm(f"{VOLUME}/_checkpoints/lab", True)
+print(f"lab orders: {lab_orders.count():,} + {resent.count():,} re-sent · dealers file written")
 
 # COMMAND ----------
 

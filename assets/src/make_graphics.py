@@ -353,7 +353,33 @@ def write_layout():
     save("write_layout", s)
 
 
+def medallion_lab():
+    s = Svg(1000, 330)
+    s.text(500, 30, "The bronze-to-gold lab", 18, INK, "bold")
+    cols = [
+        (20, "Raw files", "volume raw_files/lab/", ["orders_json/ (JSON)", "dealers_csv/ (CSV)"], GREY_BG, MUTED),
+        (215, "Bronze", "as delivered + lineage", ["lab_bronze_orders", "lab_bronze_dealers"], "#f6e7d8", "#a8642a"),
+        (410, "Silver", "typed · clean · deduped", ["lab_silver_orders", "lab_silver_dealers", "lab_quarantine_orders"], "#eef0f2", "#7d8a96"),
+        (605, "Gold", "aggregated for a purpose", ["lab_gold_daily_dealer_sales", "lab_gold_category_region"], "#fbf3d5", "#b08d1a"),
+        (800, "Serve", "answers and visuals", ["SQL queries", "AI/BI dashboard"], BLUE_BG, BLUE),
+    ]
+    for x, title, sub, items, fill, stroke in cols:
+        s.rect(x, 55, 180, 250, fill, stroke, 12, 2)
+        s.text(x + 90, 85, title, 17, stroke, "bold")
+        s.text(x + 90, 106, sub, 11.5, MUTED)
+        for i, it in enumerate(items):
+            s.rect(x + 10, 125 + i * 52, 160, 40, "#fff", stroke, 6, 1)
+            s.text(x + 90, 150 + i * 52, it, 10.5 if len(it) > 22 else 11.5, INK, "bold")
+    for x in (200, 395, 590, 785):
+        s.arrow(x + 2, 180, x + 13, 180, MUTED, 2)
+    labels = [(117, "Auto Loader / spark.read"), (312, "SQL: try_cast, QUALIFY"), (507, "SQL: joins + GROUP BY"),
+              (702, "SQL, dashboard datasets")]
+    for x, t in labels:
+        s.text(x + 90, 322, t, 11, MUTED, italic=True)
+    save("medallion_lab", s)
+
+
 if __name__ == "__main__":
     for fn in [data_model, driver_bottleneck, lazy_evaluation, driver_loop, python_udf, plan_bloat, small_files,
-               incremental_ingest, range_join, scd_explosion, window_partition, write_layout]:
+               incremental_ingest, range_join, scd_explosion, window_partition, write_layout, medallion_lab]:
         fn()

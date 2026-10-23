@@ -4,7 +4,8 @@
 #   databricks bundle run    -t dev -p <profile> spark_dos_donts_setup      # generate the data (run once)
 #   databricks bundle run    -t dev -p <profile> spark_dos_donts_workshop   # optional: run the workshop end to end
 #
-# Then open notebooks/01_spark_dos_and_donts in the bundle folder and step through it.
+# Then open notebooks/01_bronze_to_gold_lab (hands-on lab) and notebooks/02_spark_dos_and_donts in the bundle
+# folder and step through them.
 #
 # Everything runs on serverless compute (environment version 5). The catalog must already
 # exist; the setup job creates the schema and the raw-files volume inside it.
@@ -31,6 +32,9 @@ variables:
   dont_timeout_seconds:
     description: Each "Don't" cell is cancelled after this many seconds and recorded as timed out.
     default: "120"
+  warehouse_id:
+    description: SQL warehouse for the lab's AI/BI dashboard. Leave empty to use the first serverless warehouse found.
+    default: ""
   environment_version:
     description: Serverless environment version. 5 or later is required for df.cache().
     default: "5"

@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Spark Do's & Don'ts
+# MAGIC # 02 · Spark Do's & Don'ts
 # MAGIC
 # MAGIC **Apex Motorsports Parts** (a fictional company) has 100M order lines in a star schema, a 300-column
 # MAGIC telemetry table from its test program, and partner files landing in a volume. This notebook takes
@@ -32,7 +32,7 @@
 # MAGIC   from any section.
 # MAGIC
 # MAGIC **Before you start**
-# MAGIC 1. The setup job (`Spark Do's & Don'ts - setup`) must have run once.
+# MAGIC 1. The setup job (`Spark Do's & Don'ts - setup`) must have run once. (`01_bronze_to_gold_lab` is a good warm-up, but not required.)
 # MAGIC 2. Attach **serverless** compute. Use environment version **5** or later (*Environment* side panel); `df.cache()` needs it.
 # MAGIC 3. Leave the `catalog` / `schema` widgets empty to use the values from the setup job, or fill them in.
 # MAGIC
@@ -1256,7 +1256,7 @@ display(small.selectExpr("n", "n * n AS n_squared"))
 # MAGIC
 # MAGIC Don't accept the first answer blindly. Check that Genie Code kept the semantics (month filter, region
 # MAGIC filter, dealers with no orders excluded, rounding). The reference solution and an explanation of
-# MAGIC every fix are in `02_genie_code_challenge_solution`.
+# MAGIC every fix are in `03_genie_code_challenge_solution`.
 # MAGIC
 # MAGIC 📚 **References:** [Genie Code](https://docs.databricks.com/aws/en/genie-code/)
 

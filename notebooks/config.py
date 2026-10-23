@@ -57,6 +57,10 @@ if not CATALOG or not SCHEMA:
 
 VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/raw_files"
 
+# Make the workshop schema the default, so SQL cells can use short table names (fact_orders, lab_silver_orders, ...)
+spark.sql(f"USE CATALOG `{CATALOG}`")
+spark.sql(f"USE SCHEMA `{SCHEMA}`")
+
 
 def T(name):
     """Fully qualified name of a workshop table."""

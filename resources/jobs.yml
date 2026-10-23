@@ -1,8 +1,8 @@
 # Two jobs. Job parameters are pushed to every notebook task as widget values.
 #
 # spark_dos_donts_setup     00_generate_workshop_data   (run once before the workshop)
-# spark_dos_donts_workshop  01_spark_dos_and_donts -> 02_genie_code_challenge_solution
-#                           (optional instructor dry run; participants normally step through 01 by hand)
+# spark_dos_donts_workshop  01_bronze_to_gold_lab -> 02_spark_dos_and_donts -> 03_genie_code_challenge_solution
+#                           (optional instructor dry run with auto_solve=true; participants step through by hand)
 
 resources:
   jobs:
@@ -36,9 +36,9 @@ resources:
     spark_dos_donts_workshop:
       name: "Spark Do's & Don'ts - run the workshop end to end"
       description: >
-        Runs every Don't/Do pair and the Genie Code challenge solution, and writes the timings to
-        the workshop_scoreboard table. Each Don't is cancelled after dont_timeout_seconds, so a
-        run takes roughly 20 minutes. Requires the setup job.
+        Runs the bronze-to-gold lab with every exercise auto-solved (and publishes its dashboard),
+        then every Don't/Do pair and the Genie Code challenge solution, writing the timings to the
+        workshop_scoreboard table. Takes roughly 25 minutes. Requires the setup job.
       max_concurrent_runs: 1
       queue:
         enabled: true
@@ -50,16 +50,27 @@ resources:
           default: ${var.schema}
         - name: dont_timeout_seconds
           default: ${var.dont_timeout_seconds}
+        - name: auto_solve
+          default: "true"
+        - name: warehouse_id
+          default: ${var.warehouse_id}
       environments: *workshop_environments
       tasks:
+        - task_key: bronze_to_gold_lab
+          environment_key: serverless
+          max_retries: 0
+          notebook_task:
+            notebook_path: ../notebooks/01_bronze_to_gold_lab.py
         - task_key: dos_and_donts
+          depends_on:
+            - task_key: bronze_to_gold_lab
           environment_key: serverless
           max_retries: 0  # a retry would rerun every Don't; investigate instead
           notebook_task:
-            notebook_path: ../notebooks/01_spark_dos_and_donts.py
+            notebook_path: ../notebooks/02_spark_dos_and_donts.py
         - task_key: genie_code_challenge_solution
           depends_on:
             - task_key: dos_and_donts
           environment_key: serverless
           notebook_task:
-            notebook_path: ../notebooks/02_genie_code_challenge_solution.py
+            notebook_path: ../notebooks/03_genie_code_challenge_solution.py
