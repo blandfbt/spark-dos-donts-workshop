@@ -1,0 +1,71 @@
+{
+  "title": "Apex Motorsports Parts - Sales",
+  "description": "Explore December 2025 sales of Apex Motorsports Parts (a fictional performance-parts seller): net revenue, margin and orders by day, week, region, dealer tier, dealer, state and part category.",
+  "_note": "Reference definition for the Genie notebooks (03b/04/11). Table names assume the default CONFIG (catalog dbx_workshop_dev, source schema shared); remap them as in notebook 11 for another environment.",
+  "table_identifiers": [
+    "dbx_workshop_dev.shared.endtoend_gold_category_region_fact",
+    "dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact",
+    "dbx_workshop_dev.shared.endtoend_silver_dealers_dim",
+    "dbx_workshop_dev.shared.endtoend_silver_parts_dim"
+  ],
+  "sql_instructions": "Business context: Apex Motorsports Parts sells performance parts through about 500 dealers. All sales data covers December 2025.\nTables: endtoend_gold_daily_dealer_sales_fact (one row per order_date x dealer), endtoend_gold_category_region_fact (one row per region x part category, no dates or dealers), endtoend_silver_dealers_dim (one row per dealer; the only place with the dealer's two-letter state code), endtoend_silver_parts_dim (one row per part; catalog data, no sales).\nJoin: endtoend_gold_daily_dealer_sales_fact.dealer_id = endtoend_silver_dealers_dim.dealer_id (many-to-one).\nMargin % = 100 * SUM(margin) / SUM(net_revenue). Never average margin_pct or daily percentages.\nAverage revenue per order = SUM(net_revenue) / SUM(orders).\nSales / revenue mean net_revenue. Orders means the orders column (order lines).\nWeeks start on Monday: CAST(DATE_TRUNC('WEEK', order_date) AS DATE).\nMap state names to two-letter codes (Texas = 'TX'). Use exact matches for region, dealer_tier, category and state.\nRound money and percentages to 2 decimals; cast counts with CAST(... AS BIGINT).",
+  "sample_questions": [
+    "What was the total net revenue in December 2025?",
+    "What was the margin % by dealer tier?",
+    "Which part category has the highest margin %?"
+  ],
+  "curated_questions": [
+    {
+      "question": "What was the total net revenue in December 2025?",
+      "sql": "SELECT ROUND(SUM(net_revenue), 2) AS net_revenue FROM dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact"
+    },
+    {
+      "question": "How many dealers had at least one order?",
+      "sql": "SELECT CAST(COUNT(DISTINCT dealer_id) AS BIGINT) AS dealers FROM dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact"
+    },
+    {
+      "question": "What was the margin % by dealer tier?",
+      "sql": "SELECT dealer_tier, ROUND(100.0 * SUM(margin) / NULLIF(SUM(net_revenue), 0), 2) AS margin_pct FROM dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact GROUP BY dealer_tier ORDER BY margin_pct DESC"
+    },
+    {
+      "question": "What was the margin % by region?",
+      "sql": "SELECT region, ROUND(100.0 * SUM(margin) / NULLIF(SUM(net_revenue), 0), 2) AS margin_pct FROM dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact GROUP BY region ORDER BY margin_pct DESC"
+    },
+    {
+      "question": "What was the net revenue of dealers in Ohio?",
+      "sql": "SELECT ROUND(SUM(s.net_revenue), 2) AS net_revenue FROM dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact s JOIN dbx_workshop_dev.shared.endtoend_silver_dealers_dim d ON s.dealer_id = d.dealer_id WHERE d.state = 'OH'"
+    },
+    {
+      "question": "Net revenue by dealer state",
+      "sql": "SELECT d.state, ROUND(SUM(s.net_revenue), 2) AS net_revenue FROM dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact s JOIN dbx_workshop_dev.shared.endtoend_silver_dealers_dim d ON s.dealer_id = d.dealer_id GROUP BY d.state ORDER BY net_revenue DESC"
+    },
+    {
+      "question": "Top 5 dealers by net revenue in the Northeast region",
+      "sql": "SELECT dealer_name, ROUND(SUM(net_revenue), 2) AS net_revenue FROM dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact WHERE region = 'Northeast' GROUP BY dealer_name ORDER BY net_revenue DESC LIMIT 5"
+    },
+    {
+      "question": "What was the average revenue per order by region?",
+      "sql": "SELECT region, ROUND(SUM(net_revenue) / NULLIF(SUM(orders), 0), 2) AS avg_revenue_per_order FROM dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact GROUP BY region ORDER BY avg_revenue_per_order DESC"
+    },
+    {
+      "question": "Weekly net revenue by region",
+      "sql": "SELECT CAST(DATE_TRUNC('WEEK', order_date) AS DATE) AS order_week, region, ROUND(SUM(net_revenue), 2) AS net_revenue FROM dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact GROUP BY ALL ORDER BY order_week, region"
+    },
+    {
+      "question": "Daily net revenue on weekends vs weekdays",
+      "sql": "SELECT CASE WHEN DAYOFWEEK(order_date) IN (1, 7) THEN 'weekend' ELSE 'weekday' END AS day_type, ROUND(SUM(net_revenue) / COUNT(DISTINCT order_date), 2) AS avg_daily_net_revenue FROM dbx_workshop_dev.shared.endtoend_gold_daily_dealer_sales_fact GROUP BY 1"
+    },
+    {
+      "question": "What is the margin % for each part category across all regions?",
+      "sql": "SELECT category, ROUND(100.0 * SUM(margin) / NULLIF(SUM(net_revenue), 0), 2) AS margin_pct FROM dbx_workshop_dev.shared.endtoend_gold_category_region_fact GROUP BY category ORDER BY margin_pct DESC"
+    },
+    {
+      "question": "Net revenue by part category in the West region",
+      "sql": "SELECT category, ROUND(SUM(net_revenue), 2) AS net_revenue FROM dbx_workshop_dev.shared.endtoend_gold_category_region_fact WHERE region = 'West' GROUP BY category ORDER BY net_revenue DESC"
+    },
+    {
+      "question": "How many parts are in each category, and what is their average list price?",
+      "sql": "SELECT category, CAST(COUNT(*) AS BIGINT) AS parts, ROUND(AVG(list_price), 2) AS avg_list_price FROM dbx_workshop_dev.shared.endtoend_silver_parts_dim GROUP BY category ORDER BY category"
+    }
+  ]
+}
