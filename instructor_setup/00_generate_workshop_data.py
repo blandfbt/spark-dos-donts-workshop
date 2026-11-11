@@ -1,12 +1,16 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 00 · Generate the workshop data
+# MAGIC # 00 · Generate the workshop data (instructor, run once before the workshop)
+# MAGIC
+# MAGIC > 🧑‍🏫 **Instructor only.** Participants don't run this notebook: they read the tables it writes.
 # MAGIC
 # MAGIC **Apex Motorsports Parts** (a fictional company) sells performance parts through 500 dealers and
-# MAGIC runs a 20-car test program. This notebook generates everything the Do's & Don'ts workshop needs.
-# MAGIC The setup job normally runs it, so you do not need to step through it.
+# MAGIC runs a 20-car test program. This notebook generates everything the Do's & Don'ts workshop needs into the
+# MAGIC shared source schema set in `CONFIG` (`dbx_workshop_dev.shared`). Participants read it from there and
+# MAGIC write their own tables to their own schema. The instructor setup job normally runs it, followed by
+# MAGIC `01_prebuild_shared_gold`.
 # MAGIC
-# MAGIC ![Workshop data model](./images/data_model.png)
+# MAGIC ![Workshop data model](../notebooks/images/data_model.png)
 # MAGIC
 # MAGIC | object | shape | used to show |
 # MAGIC |---|---|---|
@@ -27,25 +31,20 @@
 
 # COMMAND ----------
 
-# DBTITLE 1,⚙️ Parameters, schema and volume
-import json
-import os
+# DBTITLE 1,⚙️ Instructor mode (writes to the shared source schema)
+INSTRUCTOR_SETUP = True
 
+# COMMAND ----------
+
+# MAGIC %run ../CONFIG
+
+# COMMAND ----------
+
+# DBTITLE 1,⚙️ Parameters, schema and volume
 from pyspark.sql import functions as F
 
-dbutils.widgets.text("catalog", "", "Catalog")
-dbutils.widgets.text("schema", "spark_dos_donts", "Schema")
-dbutils.widgets.text("fact_rows", "100000000", "fact_orders rows")
-dbutils.widgets.text("workshop_tag", "spark_dos_donts", "Workshop tag")
-
-CATALOG = dbutils.widgets.get("catalog").strip()
-SCHEMA = dbutils.widgets.get("schema").strip()
-FACT_ROWS = int(dbutils.widgets.get("fact_rows"))
-WORKSHOP_TAG_KEY = "workshop_name"  # same key as the bundle's presets.tags
-WORKSHOP_TAG = dbutils.widgets.get("workshop_tag").strip() or "spark_dos_donts"
-assert CATALOG and SCHEMA, "Set the catalog and schema widgets (or run this notebook through the setup job)."
-
-VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/raw_files"
+FACT_ROWS = int(_job_param("fact_rows", "100000000"))  # 100M makes the Don'ts clearly hurt; 20M is a quick smoke test
+SCHEMA = SOURCE_SCHEMA  # everything below writes to the shared source schema
 
 N_DEALERS = 500
 N_PARTS = 25_000
@@ -62,28 +61,10 @@ WIDE_SENSORS_PER_GROUP = 30  # 10 x 30 = 300 sensor columns
 
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{CATALOG}`.`{SCHEMA}`")
 spark.sql(f"CREATE VOLUME IF NOT EXISTS `{CATALOG}`.`{SCHEMA}`.raw_files")
-spark.sql(f"DROP TABLE IF EXISTS `{CATALOG}`.`{SCHEMA}`.workshop_scoreboard")  # fresh scoreboard per setup
 
 
-def T(name):
-    return f"`{CATALOG}`.`{SCHEMA}`.`{name}`"
-
-
-def tag_workshop_objects(catalog, schema, value):
-    """Put the workshop tag on the schema, the raw-files volume and every table in it (for easy filtering)."""
-    tagged, skipped = 0, []
-    targets = [("SCHEMA", f"`{catalog}`.`{schema}`"), ("VOLUME", f"`{catalog}`.`{schema}`.`raw_files`")]
-    targets += [("TABLE", f"`{catalog}`.`{schema}`.`{t.tableName}`")
-                for t in spark.sql(f"SHOW TABLES IN `{catalog}`.`{schema}`").where("NOT isTemporary").collect()]
-    for kind, name in targets:
-        try:
-            spark.sql(f"ALTER {kind} {name} SET TAGS ('{WORKSHOP_TAG_KEY}' = '{value}')")
-            tagged += 1
-        except Exception as e:  # e.g. missing APPLY TAG privilege; tagging is a convenience, never a blocker
-            skipped.append(f"{name}: {str(e).strip().splitlines()[0][:80]}")
-    print(f"🏷️  tagged {tagged} objects with {WORKSHOP_TAG_KEY} = {value}" + (f" ({len(skipped)} skipped)" if skipped else ""))
-    for s in skipped[:3]:
-        print("   ", s)
+def T(name):  # in this notebook, T() means the shared source schema
+    return SRC(name)
 
 
 def save(df, name, cluster_by=None):
@@ -452,22 +433,13 @@ print(f"lab orders: {lab_orders.count():,} + {resent.count():,} re-sent · deale
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Workshop configuration file
-# MAGIC
-# MAGIC `config.py` reads this file when the workshop notebooks are opened by hand without widget values.
+# MAGIC ## Tag and list what was written
 
 # COMMAND ----------
 
-# DBTITLE 1,Write _workshop_config.json
-notebook_dir = "/Workspace" + os.path.dirname(
-    dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-)
-with open(f"{notebook_dir}/_workshop_config.json", "w") as f:
-    json.dump({"catalog": CATALOG, "schema": SCHEMA}, f)
-print(f"Wrote {notebook_dir}/_workshop_config.json")
-
+# DBTITLE 1,Tag the shared objects
 # Tag the schema, volume and every generated table, so workshop objects are easy to find and filter
-tag_workshop_objects(CATALOG, SCHEMA, WORKSHOP_TAG)
+tag_workshop_objects(SCHEMA)
 
 display(
     spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{SCHEMA}`").select("tableName")

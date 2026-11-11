@@ -1,17 +1,19 @@
-# Two jobs. Job parameters are pushed to every notebook task as widget values.
+# Two instructor jobs. Job parameters reach every notebook task; CONFIG.py picks up catalog, source_schema and
+# user_schema from them and otherwise uses its own values.
 #
-# spark_dos_donts_setup     00_generate_workshop_data   (run once before the workshop)
-# spark_dos_donts_workshop  01_bronze_to_gold_lab -> 02_spark_dos_and_donts -> 03_genie_code_challenge_solution
-#                           (optional instructor dry run with auto_solve=true; participants step through by hand)
+# workshop_setup    00_generate_workshop_data -> 01_prebuild_shared_gold   (run once before the workshop)
+# workshop_dry_run  01_bronze_to_gold_lab -> 02_spark_dos_and_donts -> 03_genie_code_challenge_solution
+#                   (optional instructor rehearsal into user_schema, with auto_solve=true)
 
 resources:
   jobs:
-    spark_dos_donts_setup:
-      name: "Spark Do's & Don'ts - setup (generate sample data)"
+    workshop_setup:
+      name: "Spark Do's & Don'ts - setup (generate shared data)"
       description: >
-        Creates the workshop schema and raw-files volume, generates the star schema, the wide
-        telemetry table and the narrow telemetry/session tables, and lands raw CSV and Parquet
-        files in the volume. Every table and folder it writes is replaced on rerun.
+        Generates the star schema, the wide telemetry table, the narrow telemetry/session tables and the raw
+        CSV/Parquet/JSON files into the shared source schema, then runs the bronze-to-gold lab auto-solved into
+        the same schema so the Genie notebooks have gold tables to build on. Every table and folder is replaced
+        on rerun. Participant schemas are created separately (instructor_setup/02_create_participant_schemas).
       max_concurrent_runs: 1
       queue:
         enabled: true
@@ -19,12 +21,14 @@ resources:
       parameters:
         - name: catalog
           default: ${var.catalog}
-        - name: schema
-          default: ${var.schema}
+        - name: source_schema
+          default: ${var.source_schema}
         - name: fact_rows
           default: ${var.fact_rows}
         - name: workshop_tag
           default: ${var.workshop_tag}
+        - name: warehouse_id
+          default: ${var.warehouse_id}
       environments: &workshop_environments
         - environment_key: serverless
           spec:
@@ -33,14 +37,20 @@ resources:
         - task_key: generate_workshop_data
           environment_key: serverless
           notebook_task:
-            notebook_path: ../notebooks/00_generate_workshop_data.py
+            notebook_path: ../instructor_setup/00_generate_workshop_data.py
+        - task_key: prebuild_shared_gold
+          depends_on:
+            - task_key: generate_workshop_data
+          environment_key: serverless
+          notebook_task:
+            notebook_path: ../instructor_setup/01_prebuild_shared_gold.py
 
-    spark_dos_donts_workshop:
-      name: "Spark Do's & Don'ts - run the workshop end to end"
+    workshop_dry_run:
+      name: "Spark Do's & Don'ts - dry run into a user schema"
       description: >
-        Runs the bronze-to-gold lab with every exercise auto-solved (and publishes its dashboard),
-        then every Don't/Do pair and the Genie Code challenge solution, writing the timings to the
-        workshop_scoreboard table. Takes roughly 25 minutes. Requires the setup job.
+        Runs the bronze-to-gold lab with every exercise auto-solved (and publishes its dashboard), then every
+        Don't/Do pair and the Genie Code challenge solution, reading the shared source data and writing to
+        user_schema (which must already exist). Takes roughly 25 minutes. Requires the setup job.
       max_concurrent_runs: 1
       queue:
         enabled: true
@@ -48,8 +58,10 @@ resources:
       parameters:
         - name: catalog
           default: ${var.catalog}
-        - name: schema
-          default: ${var.schema}
+        - name: source_schema
+          default: ${var.source_schema}
+        - name: user_schema
+          default: ${var.user_schema}
         - name: dont_timeout_seconds
           default: ${var.dont_timeout_seconds}
         - name: auto_solve

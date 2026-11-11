@@ -28,7 +28,12 @@
 # COMMAND ----------
 
 # DBTITLE 1,⚙️ Configuration
-# MAGIC %run ./config
+# MAGIC %run ../CONFIG
+
+# COMMAND ----------
+
+# DBTITLE 1,⚙️ Workshop helpers
+# MAGIC %run ./workshop_helpers
 
 # COMMAND ----------
 
@@ -39,12 +44,12 @@ def build_dealer_scorecard_fast(region="Midwest", month="2025-12", target_table=
     month_start = F.to_date(F.lit(f"{month}-01"))
 
     lines = (
-        spark.table(T("fact_orders"))
+        spark.table(SRC("fact_orders"))
         # (2) range on the raw clustering column -> data skipping reads ~1 month of files
         .where((F.col("order_date") >= month_start) & (F.col("order_date") < F.add_months(month_start, 1)))
         # (1)(3)(4) joins instead of a driver loop; dealers without orders drop out of the inner join
-        .join(spark.table(T("dim_dealer")).where(F.col("region") == region).select("dealer_id", "dealer_name"), "dealer_id")
-        .join(spark.table(T("dim_part")).select("part_id", "category", "unit_cost"), "part_id")
+        .join(spark.table(SRC("dim_dealer")).where(F.col("region") == region).select("dealer_id", "dealer_name"), "dealer_id")
+        .join(spark.table(SRC("dim_part")).select("part_id", "category", "unit_cost"), "part_id")
         # (5) column expressions instead of pandas apply
         .withColumn("net_revenue", F.col("quantity") * F.col("unit_price") * (1 - F.col("discount_pct")))
         .withColumn("margin", F.col("net_revenue") - F.col("quantity") * F.col("unit_cost"))
@@ -107,9 +112,9 @@ WITH lines AS (
   SELECT o.dealer_id, d.dealer_name, o.customer_id, p.category,
          o.quantity * o.unit_price * (1 - o.discount_pct)                              AS net_revenue,
          o.quantity * o.unit_price * (1 - o.discount_pct) - o.quantity * p.unit_cost  AS margin
-  FROM {T('fact_orders')} o
-  JOIN {T('dim_dealer')} d ON o.dealer_id = d.dealer_id AND d.region = 'Midwest'
-  JOIN {T('dim_part')}   p ON o.part_id   = p.part_id
+  FROM {SRC('fact_orders')} o
+  JOIN {SRC('dim_dealer')} d ON o.dealer_id = d.dealer_id AND d.region = 'Midwest'
+  JOIN {SRC('dim_part')}   p ON o.part_id   = p.part_id
   WHERE o.order_date >= DATE'2025-12-01' AND o.order_date < DATE'2026-01-01'
 ),
 top_category AS (

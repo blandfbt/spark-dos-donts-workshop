@@ -1,30 +1,30 @@
-# Spark Do's & Don'ts workshop - Apex Motorsports Parts (a fictional company).
+# Spark Do's & Don'ts + Genie workshop - Apex Motorsports Parts (a fictional company).
 #
-#   databricks bundle deploy -t dev -p <profile> --var="catalog=<catalog>" --var="schema=<schema>"
-#   databricks bundle run    -t dev -p <profile> spark_dos_donts_setup      # generate the data (run once)
-#   databricks bundle run    -t dev -p <profile> spark_dos_donts_workshop   # optional: run the workshop end to end
+# INSTRUCTOR ONLY. Participants don't deploy this bundle: they clone the repo into their workspace folder, set
+# USER_SCHEMA in CONFIG.py and run the notebooks by hand. The bundle is how the instructor prepares the data:
 #
-# Then open notebooks/01_bronze_to_gold_lab (hands-on lab) and notebooks/02_spark_dos_and_donts in the bundle
-# folder and step through them.
+#   databricks bundle deploy -t dev -p <profile>
+#   databricks bundle run    -t dev -p <profile> workshop_setup        # generate shared data + prebuild lab tables
+#   databricks bundle run    -t dev -p <profile> workshop_dry_run --params user_schema=<your_schema>   # optional
 #
-# Everything runs on serverless compute (environment version 5). The catalog must already
-# exist; the setup job creates the schema and the raw-files volume inside it.
+# Participant schemas and grants: run instructor_setup/02_create_participant_schemas by hand (it needs the email list).
+# Everything runs on serverless compute. The catalog must already exist.
 bundle:
   name: spark_dos_donts_workshop
 
 include:
   - resources/*.yml
 
-# Tag every bundle resource that supports tags (both jobs today) so workshop assets are easy to filter.
-# The notebooks apply the same tag to the Unity Catalog schema, volume and tables they create. The key is
-# "workshop_name" rather than "workshop" because some accounts govern a "workshop" tag key with fixed values.
+# Tag every bundle resource that supports tags so workshop assets are easy to filter. The notebooks apply the
+# same tag to the Unity Catalog schemas, volumes and tables they create. The key is "workshop_name" rather than
+# "workshop" because some accounts govern a "workshop" tag key with fixed values.
 presets:
   tags:
     workshop_name: ${var.workshop_tag}
 
 sync:
   exclude:
-    - assets/src/**   # SVG sources of the notebook graphics; only the rendered PNGs are needed
+    - assets/src/**    # SVG sources of the notebook graphics; only the rendered PNGs are needed
     - presentation/**  # the slide deck isn't needed in the workspace
 
 variables:
@@ -32,10 +32,14 @@ variables:
     description: Value of the "workshop_name" tag put on every job and Unity Catalog object of this workshop.
     default: spark_dos_donts
   catalog:
-    description: Existing Unity Catalog catalog that will hold the workshop schema.
-  schema:
-    description: Schema for all workshop tables and the raw-files volume (created if missing).
-    default: spark_dos_donts
+    description: Existing Unity Catalog catalog for the workshop (same as CATALOG in CONFIG.py).
+    default: dbx_workshop_dev
+  source_schema:
+    description: Shared, read-only source schema the setup job writes (same as SOURCE_SCHEMA in CONFIG.py).
+    default: shared
+  user_schema:
+    description: Existing schema the dry-run job writes to (the instructor's own participant schema).
+    default: ""
   fact_rows:
     description: Rows in fact_orders. 100M makes the Don'ts clearly hurt; 20M is a quick smoke test.
     default: "100000000"
@@ -53,27 +57,9 @@ variables:
     default: PERFORMANCE_OPTIMIZED
 
 targets:
-  # One deployment per participant (or per customer workspace). Development mode prefixes the
-  # job names with "[dev <user>]" and deploys into the user's own .bundle folder.
   dev:
     mode: development
     default: true
     # Pick the workspace with `-p <cli-profile>`, or uncomment and set it here:
     # workspace:
     #   host: https://<your-workspace>.cloud.databricks.com
-    # variables:
-    #   catalog: <your_catalog>
-    #   schema: spark_dos_donts
-
-  # One instructor-owned copy that participants can view (not edit).
-  shared:
-    mode: production
-    # workspace:
-    #   host: https://<your-workspace>.cloud.databricks.com
-    workspace:
-      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
-    permissions:
-      - user_name: ${workspace.current_user.userName}
-        level: CAN_MANAGE
-      - group_name: users
-        level: CAN_VIEW

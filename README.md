@@ -1,6 +1,6 @@
 # Spark Do's & Don'ts workshop
 
-A hands-on workshop, deployable as a Databricks Asset Bundle, in two parts:
+A hands-on workshop in three parts:
 
 1. **Bronze-to-gold lab** (`01_bronze_to_gold_lab`, ~45 min). Participants take messy raw JSON and CSV files
    through bronze, silver and gold tables, answer questions in SQL and publish an AI/BI dashboard. Every
@@ -9,24 +9,33 @@ A hands-on workshop, deployable as a Databricks Asset Bundle, in two parts:
 2. **Spark Do's & Don'ts** (`02_spark_dos_and_donts`). It runs the most common Spark anti-patterns
 **side by side** with the fix, on realistic data, using serverless compute. Each section has a
 📖 *Why* cell (with a diagram), a 🚫 *Don't* cell that really hurts (slow, memory-hungry or wrong), and a
-✅ *Do* cell that gives the same answer properly. Every run is timed and collected into a scoreboard.
+✅ *Do* cell that gives the same answer properly. Every run is timed.
 The workshop ends with a **Genie Code challenge**: participants ask Genie Code to optimize a job that
 contains many of the anti-patterns at once.
+3. **Genie** (`genie/`). Build, curate, benchmark and operate Genie agents on the lab's gold tables: a baseline
+   agent, a metric view, a Knowledge Store agent, benchmarks, a three-way comparison, Genie Code skills,
+   monitoring and CI/CD. See [`genie/README.md`](genie/README.md).
 
 The data belongs to **Apex Motorsports Parts**, a fictional company: a parts-sales star schema, a
 300-column test-telemetry table, 1 Hz car telemetry with session windows, and raw CSV/Parquet files in a
 Unity Catalog volume.
 
+**One shared dataset, one schema per participant.** The instructor generates all source data once into
+`dbx_workshop_dev.shared` (read-only for participants). Each participant gets their own schema,
+`dbx_workshop_dev.<firstname_lastname>`, and everything they create (lab tables, scratch tables, checkpoints,
+metric views, Genie config) goes there. The single place these names are set is [`CONFIG.py`](CONFIG.py).
+
 ```
-databricks.yml                               bundle, variables (catalog, schema, ...), targets
-resources/jobs.yml                           setup job + end-to-end workshop job (serverless)
-notebooks/00_generate_workshop_data.py       generates all tables and raw files (setup job)
+CONFIG.py                                    ✏️ CATALOG, SOURCE_SCHEMA, USER_SCHEMA: the only file participants edit
 notebooks/01_bronze_to_gold_lab.py           ← part 1: the hands-on lab
 notebooks/02_spark_dos_and_donts.py          ← part 2: the do's and don'ts
 notebooks/03_genie_code_challenge_solution.py reference solution for the challenge in part 2
-notebooks/config.py                          widgets, table names, timing/scoreboard helpers (%run)
+notebooks/workshop_helpers.py                shared DataFrames over the source tables, timing helpers (%run)
 notebooks/lab_helpers.py                     lab checks, reference solutions, reveal/catch_up, dashboard builders
 notebooks/images/                            diagrams used in the markdown cells
+genie/                                       ← part 3: Genie agents on the shared gold tables (see genie/README.md)
+instructor_setup/                            🧑‍🏫 instructor only: generate shared data, prebuild gold, create participant schemas
+databricks.yml, resources/jobs.yml           instructor bundle: setup job + optional dry-run job (serverless)
 assets/src/make_graphics.py                  regenerates the diagrams (SVG -> PNG, needs rsvg-convert)
 presentation/                                15-20 min slide deck (single HTML + PDF) that goes with the workshop
 ```
@@ -62,7 +71,7 @@ it automatically if it's missing.
 | 9 | Writing data | `partitionBy(order_date, dealer_id)` → liquid clustering · `coalesce(1)` → parallel write |
 | 10 | Cluster-era habits | `spark.conf` tuning, `sparkContext`, RDDs (rejected on serverless) → DataFrame APIs, hints |
 | 11 | 🧞 Genie Code challenge | optimize `build_dealer_scorecard_slow`; a check cell validates the result |
-| 12 | Scoreboard | Don't vs Do timings and speedups, saved to `workshop_scoreboard` |
+| 12 | Cheat sheet | every Don't and its Do on one page |
 
 **How the Don'ts stay short and safe.** Each Do runs the full workload. Most Don'ts run a slice of the
 same work (for example 4% of the orders, or 50 of the 500 dealers), so they finish in roughly 10–60 s.
@@ -71,75 +80,85 @@ would need compared with the driver's actual RAM. That's how `collect()` shows "
 driver → out of memory" without crashing anything. A watchdog cancels any Spark work still running after
 `dont_timeout_seconds` (default 120 s) as a safety net.
 
-**Restart-safe.** Every result is appended to the `workshop_scoreboard` table the moment it's measured.
-Every section starts with a `%run ./config` resume point, so after a detach or restart you can
-continue from any section without rerunning the ones before it. Each *Why* cell ends with links to the
-Spark and Databricks documentation behind the advice.
+**Restart-safe.** Every section starts with a `%run ../CONFIG` + `%run ./workshop_helpers` resume point, so after
+a detach or restart you can continue from any section without rerunning the ones before it. Each *Why* cell ends
+with links to the Spark and Databricks documentation behind the advice.
 
 ## Prerequisites
 
-* Databricks CLI ≥ 0.250 (`databricks -v`).
-* A workspace with Unity Catalog, serverless jobs and serverless notebooks, and Genie Code (Databricks Assistant) enabled.
-* A SQL warehouse (serverless recommended) for the lab's dashboard. The lab uses the first serverless warehouse it finds, or the `warehouse_id` you set.
-* An existing catalog on which you have `USE CATALOG` and `CREATE SCHEMA` (or an existing schema with `CREATE TABLE` and `CREATE VOLUME`).
-* About 10 GB of storage for the generated data at the default size.
+* A workspace with Unity Catalog, serverless notebooks and jobs, Genie and Genie Code (Databricks Assistant) enabled.
+* The catalog `dbx_workshop_dev` (change `CATALOG` in `CONFIG.py` to use another).
+* A SQL warehouse (serverless recommended) for the lab's dashboard and the Genie spaces; participants need **CAN USE** on it.
+* About 10 GB of storage for the shared data at the default size, plus about 2 GB per participant.
+* Instructor: Databricks CLI ≥ 0.250 (`databricks -v`) to deploy the setup bundle, and ownership of (or
+  `CREATE SCHEMA` + `MANAGE`/grant rights on) the catalog.
 
-## Deploy into your workspace
+## Who can do what
 
-You choose three things: the **workspace**, the **catalog** and the **schema**.
+| principal | `dbx_workshop_dev` | `dbx_workshop_dev.shared` | `dbx_workshop_dev.<firstname_lastname>` |
+|---|---|---|---|
+| instructor | owner | writes everything (setup) | creates it, grants it |
+| participant | `USE CATALOG` | `USE SCHEMA`, `SELECT`, `READ VOLUME` (read-only) | `ALL PRIVILEGES` (their own only) |
+
+Participants never need `CREATE SCHEMA`. `CONFIG.py` refuses to run with an empty `USER_SCHEMA` or with
+`USER_SCHEMA = "shared"`.
+
+## Instructor: before the workshop
 
 ```bash
 # 1. authenticate once (creates a CLI profile)
 databricks auth login --host https://<your-workspace-url> --profile <profile>
 
-# 2. deploy: pick the catalog and schema at deploy time
-databricks bundle deploy -t dev -p <profile> \
-  --var="catalog=<your_catalog>" --var="schema=spark_dos_donts"
+# 2. deploy the instructor bundle (catalog/source schema default to dbx_workshop_dev / shared)
+databricks bundle deploy -t dev -p <profile>
 
-# 3. generate the data (one run, ~5 min at the default 100M order lines)
-databricks bundle run -t dev -p <profile> \
-  --var="catalog=<your_catalog>" --var="schema=spark_dos_donts" spark_dos_donts_setup
+# 3. generate the shared data and prebuild the lab's gold tables into dbx_workshop_dev.shared (~10 min)
+databricks bundle run -t dev -p <profile> workshop_setup
 ```
 
-Instead of passing `--var` and `-p` every time, you can set them once in `databricks.yml` under
-`targets.dev` (`workspace.host` and `variables.catalog` / `variables.schema`), or export
-`BUNDLE_VAR_catalog` / `BUNDLE_VAR_schema`.
+The setup job runs `instructor_setup/00_generate_workshop_data` (star schema, telemetry, raw files) and then
+`instructor_setup/01_prebuild_shared_gold`, which runs the lab auto-solved into `shared` so the Genie notebooks
+have `endtoend_gold_*` and `endtoend_silver_*_dim` tables to build on. You can also run both notebooks by hand.
 
-**Smaller/faster:** add `--var="fact_rows=20000000"` for a quick smoke test. The Don'ts still lose, but by less.
+4. **Create the participant schemas:** open `instructor_setup/02_create_participant_schemas`, paste the
+   participants' emails into `PARTICIPANTS` and run it. It creates `dbx_workshop_dev.<firstname_lastname>` for each
+   (from `jane.doe@company.com` → `jane_doe`), grants `ALL PRIVILEGES` on it, grants read-only access on `shared`,
+   and prints the `USER_SCHEMA = "..."` line each person needs. Give participants **CAN USE** on the SQL warehouse.
+5. **Optional rehearsal:** create a schema for yourself with step 4, then
+   `databricks bundle run -t dev -p <profile> workshop_dry_run --params user_schema=<your_schema>`. It runs the
+   lab auto-solved, every Don't/Do and the challenge solution against `shared`, writing only to your schema.
 
-## Run the workshop
+**Smaller/faster:** `databricks bundle run ... workshop_setup --params fact_rows=20000000` for a quick smoke test.
 
-1. In the workspace, open the bundle folder
-   `/Workspace/Users/<you>/.bundle/spark_dos_donts_workshop/dev/files/notebooks/`.
-2. Start with **`01_bronze_to_gold_lab`**, then continue with **`02_spark_dos_and_donts`**.
-3. Attach **serverless** compute. In the *Environment* side panel, choose environment version **5** or later.
-4. **Set your catalog and schema**: fill the `catalog`/`schema` widgets at the top of the notebook, or edit
-   the first cell of `notebooks/config.py` (✏️ *Your catalog and schema*). If both are left empty, the
-   values the setup job saved in `_workshop_config.json` are used.
-5. Run the cells top to bottom, section by section. In the lab, leave `auto_solve` at `false`.
+## Participants: during the workshop
 
-**Instructor dry run / pre-warm:** `databricks bundle run -t dev -p <profile> spark_dos_donts_workshop` runs
-the lab with every exercise auto-solved (and publishes the dashboard), then notebook 02 and the challenge
-solution, and writes the timings to `workshop_scoreboard`.
+1. In the workspace, **Workspace → your home folder → Create → Git folder**, and clone this repository.
+2. Open **`CONFIG`** at the top of the repo and set `USER_SCHEMA = "<firstname_lastname>"` (your instructor will
+   confirm the name). Leave `CATALOG` and `SOURCE_SCHEMA` as they are.
+3. Open **`notebooks/01_bronze_to_gold_lab`**, attach **serverless** compute (environment version **5** or later in the
+   *Environment* side panel) and run it top to bottom. Leave `auto_solve` at `false`.
+4. Continue with **`notebooks/02_spark_dos_and_donts`**, then the **`genie/`** notebooks.
 
-### Several participants in one workspace
-
-* **Everyone deploys their own copy** (simplest): each participant runs the `dev` target with their own
-  `schema` (for example `--var="schema=sdd_<name>"`). Development mode keeps each person's bundle in their
-  own folder and prefixes job names with `[dev <user>]`.
-* **One shared dataset:** the instructor deploys once with `-t shared` and runs the setup job.
-  Participants clone the notebooks into their own folder and set the widgets to the shared catalog/schema.
-  The scratch tables the notebook writes are then shared too, so give each participant their own schema
-  if they will run section 9 (writes) at the same time.
+Ignore `instructor_setup/`: it's what the instructor ran beforehand.
 
 ## Configuration
 
+`CONFIG.py` (participants and instructor):
+
+| setting | default | meaning |
+|---|---|---|
+| `CATALOG` | `dbx_workshop_dev` | existing UC catalog |
+| `SOURCE_SCHEMA` | `shared` | read-only source tables and the `raw_files` volume, generated by the instructor |
+| `USER_SCHEMA` | *(empty, required)* | the participant's own schema; gets a `scratch_files` volume for checkpoints and landing files |
+
+Instructor bundle variables (`--var=...`), passed to the notebooks as job parameters:
+
 | variable | default | meaning |
 |---|---|---|
-| `catalog` | *(required)* | existing UC catalog |
-| `schema` | `spark_dos_donts` | schema for all tables and the `raw_files` volume (created if missing) |
+| `catalog` / `source_schema` | `dbx_workshop_dev` / `shared` | override CONFIG for the jobs |
+| `user_schema` | *(empty)* | target schema for `workshop_dry_run` |
 | `fact_rows` | `100000000` | size of `fact_orders` (the other tables are fixed size) |
-| `dont_timeout_seconds` | `120` | watchdog limit per Don't (also a notebook widget) |
+| `dont_timeout_seconds` | `120` | watchdog limit per Don't |
 | `workshop_tag` | `spark_dos_donts` | value of the `workshop_name` tag on jobs and Unity Catalog objects |
 | `warehouse_id` | *(empty)* | SQL warehouse for the lab dashboard; empty = first serverless warehouse found |
 | `environment_version` | `5` | serverless environment; ≥ 5 is needed for `df.cache()` |
@@ -147,36 +166,30 @@ solution, and writes the timings to `workshop_scoreboard`.
 
 ## Finding workshop assets
 
-Everything the workshop creates is tagged **`workshop_name = spark_dos_donts`** (change the value with
-`--var="workshop_tag=<value>"`):
+Everything the workshop creates is tagged **`workshop_name = spark_dos_donts`**: the bundle jobs (through
+`presets.tags`), the `shared` schema, its volume and tables, and each participant's schema, volume and tables.
 
-* **Jobs**: through the bundle's `presets.tags`, so any resource added to the bundle later gets it too.
-  In the Jobs UI, filter by tag `workshop_name: spark_dos_donts`.
-* **Unity Catalog**: the schema, the `raw_files` volume and every table. The setup job tags them, and the
-  lab and the do's and don'ts notebook tag the tables they add:
+```sql
+SELECT table_schema, table_name FROM dbx_workshop_dev.information_schema.table_tags
+WHERE tag_name = 'workshop_name' AND tag_value = 'spark_dos_donts';
+```
 
-  ```sql
-  SELECT table_name FROM <catalog>.information_schema.table_tags
-  WHERE tag_name = 'workshop_name' AND tag_value = 'spark_dos_donts';
-  ```
-
-The key is `workshop_name` rather than `workshop` because some accounts already govern a `workshop` tag
-key with fixed values. Tagging Unity Catalog objects needs the `APPLY TAG` privilege. Without it, the
-notebooks print a note and carry on. The lab's AI/BI dashboard can't be tagged; it's named
-`Apex Motorsports Parts - December sales (<schema>)` in your home folder.
+Tagging needs the `APPLY TAG` privilege (included in `ALL PRIVILEGES` on a participant's own schema). Without it,
+the notebooks print a note and carry on. The lab's AI/BI dashboard can't be tagged; it's named
+`Apex Motorsports Parts - December sales (<user_schema>)` in each participant's home folder.
 
 ## Clean up
 
-```bash
-databricks bundle destroy -t dev -p <profile>        # removes the jobs and the bundle files
-```
-
-The generated data stays until you drop it: `DROP SCHEMA <catalog>.<schema> CASCADE` (this also drops the
-volume). The last cell of notebook 01 can drop just the `scratch_*` tables the workshop wrote.
+* A participant's own tables: `reset_lab()` in notebook 01 and the last cell of notebook 02 (`CLEAN_UP = True`) drop the
+  `endtoend_*` / `scratch_*` tables in their schema; `genie/README.md` lists what the Genie notebooks create.
+* After the workshop (instructor): `DROP SCHEMA dbx_workshop_dev.<firstname_lastname> CASCADE` per participant,
+  `DROP SCHEMA dbx_workshop_dev.shared CASCADE` for the source data, and `databricks bundle destroy -t dev -p <profile>`.
 
 ## Notes
 
 * All data is synthetic and generated on the executors from `spark.range` with seeded random functions.
   Reruns of the setup job replace everything they wrote.
 * Timings depend on serverless scaling and caching. The ratios between Don't and Do are what matter.
+* In notebook 02, section 6c seeds each participant's landing zone with July–December 2025 from the shared order
+  export the first time it runs (under a minute), because the shared volume is read-only.
 * Regenerate the diagrams after editing them: `python3 assets/src/make_graphics.py`.

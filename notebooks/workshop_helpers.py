@@ -1,38 +1,19 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Workshop configuration and helpers
+# MAGIC # Workshop helpers
 # MAGIC
-# MAGIC Included by the workshop notebooks with `%run ./config`; you do not run this notebook on its own.
+# MAGIC Included by the workshop notebooks with `%run ./workshop_helpers`, right after `%run ../CONFIG`; you do not
+# MAGIC run this notebook on its own, and there is nothing to edit here (your settings live in `CONFIG`).
 # MAGIC
-# MAGIC * **Where the data lives: set this first.** The next cell sets `CATALOG` and `SCHEMA`. Fill the `catalog` and
-# MAGIC   `schema` widgets at the top of your notebook, or type your names directly into that cell. When both
-# MAGIC   are left empty, the values saved by the setup job (`_workshop_config.json`) are used. Bundle jobs
-# MAGIC   fill the widgets from their job parameters.
-# MAGIC * **Shared DataFrames** (`orders`, `parts`, `wide`, ...) are defined here, so `%run ./config` at the
-# MAGIC   top of any section restores everything that section needs, for example after a restart.
-# MAGIC * **`run_timed(...)`** runs one Don't or Do, times it, prints the outcome and appends it to the
-# MAGIC   `workshop_scoreboard` table right away, so results survive a crashed or restarted notebook.
+# MAGIC * **Shared DataFrames** (`orders`, `parts`, `wide`, ...) over the read-only source tables in
+# MAGIC   `dbx_workshop_dev.shared` are defined here, so `%run`-ing CONFIG and this notebook at the top of any
+# MAGIC   section restores everything that section needs, for example after a restart.
+# MAGIC * **`run_timed(...)`** runs one Don't or Do, times it and prints the outcome.
 # MAGIC   * A Don't usually runs on a **fraction** of the Do's workload so that it finishes in under a minute.
 # MAGIC     The full-size time (and driver memory) is then **projected** from the measured run.
 # MAGIC   * A watchdog is the safety net. After `dont_timeout_seconds` it cancels the cell's Spark work
 # MAGIC     (`spark.interruptAll()`). Work that runs on the driver itself, such as converting rows to
 # MAGIC     pandas, can't be cancelled, and the printout says how long that took.
-
-# COMMAND ----------
-
-# DBTITLE 1,✏️ Your catalog and schema
-# ✏️ WHERE THE WORKSHOP DATA LIVES. Fill the "catalog" and "schema" widgets at the top of the notebook, or replace
-# the right-hand side of the two lines below with your own names, for example:
-#     CATALOG = "main"
-#     SCHEMA = "spark_dos_donts"
-# With both widgets empty, the values saved by the setup job (_workshop_config.json next to the notebooks) are used.
-import json, os  # (the three lines below just read the widgets and the saved values; no need to edit them)
-dbutils.widgets.text("catalog", "", "Catalog"); dbutils.widgets.text("schema", "", "Schema")
-_saved_file = "/Workspace" + os.path.dirname(dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()) + "/_workshop_config.json"
-_saved = json.load(open(_saved_file)) if os.path.exists(_saved_file) else {}
-
-CATALOG = dbutils.widgets.get("catalog").strip() or _saved.get("catalog", "")
-SCHEMA = dbutils.widgets.get("schema").strip() or _saved.get("schema", "")
 
 # COMMAND ----------
 
@@ -45,59 +26,19 @@ import psutil
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-dbutils.widgets.text("dont_timeout_seconds", "120", "Don't timeout (s)")
-dbutils.widgets.text("workshop_tag", "spark_dos_donts", "Workshop tag")
-
-DONT_TIMEOUT_S = int(dbutils.widgets.get("dont_timeout_seconds") or 120)
-WORKSHOP_TAG_KEY = "workshop_name"  # same key as the bundle's presets.tags
-WORKSHOP_TAG = dbutils.widgets.get("workshop_tag").strip() or "spark_dos_donts"
-
-if not CATALOG or not SCHEMA:
-    raise ValueError(
-        "No catalog/schema configured. Fill the 'catalog' and 'schema' widgets at the top of the notebook, "
-        "set CATALOG and SCHEMA in the first cell of config.py, or run the setup job first (it saves them)."
-    )
-
-VOLUME = f"/Volumes/{CATALOG}/{SCHEMA}/raw_files"
-
-# Make the workshop schema the default, so SQL cells can use short table names (fact_orders, endtoend_silver_orders_fact, ...)
-spark.sql(f"USE CATALOG `{CATALOG}`")
-spark.sql(f"USE SCHEMA `{SCHEMA}`")
-
-
-def T(name):
-    """Fully qualified name of a workshop table."""
-    return f"`{CATALOG}`.`{SCHEMA}`.`{name}`"
-
-
-def tag_workshop_objects(catalog, schema, value):
-    """Put the workshop tag on the schema, the raw-files volume and every table in it (for easy filtering)."""
-    tagged, skipped = 0, []
-    targets = [("SCHEMA", f"`{catalog}`.`{schema}`"), ("VOLUME", f"`{catalog}`.`{schema}`.`raw_files`")]
-    targets += [("TABLE", f"`{catalog}`.`{schema}`.`{t.tableName}`")
-                for t in spark.sql(f"SHOW TABLES IN `{catalog}`.`{schema}`").where("NOT isTemporary").collect()]
-    for kind, name in targets:
-        try:
-            spark.sql(f"ALTER {kind} {name} SET TAGS ('{WORKSHOP_TAG_KEY}' = '{value}')")
-            tagged += 1
-        except Exception as e:  # e.g. missing APPLY TAG privilege; tagging is a convenience, never a blocker
-            skipped.append(f"{name}: {str(e).strip().splitlines()[0][:80]}")
-    print(f"🏷️  tagged {tagged} objects with {WORKSHOP_TAG_KEY} = {value}" + (f" ({len(skipped)} skipped)" if skipped else ""))
-    for s in skipped[:3]:
-        print("   ", s)
-
+DONT_TIMEOUT_S = int(_job_param("dont_timeout_seconds", "120"))  # _job_param is defined in CONFIG
 
 # COMMAND ----------
 
-# Shared inputs. All lazy: defining them reads no data.
-orders = spark.table(T("fact_orders"))
-parts = spark.table(T("dim_part"))
-dealers = spark.table(T("dim_dealer"))
-customers = spark.table(T("dim_customer"))
-customer_history = spark.table(T("dim_customer_history"))
-wide = spark.table(T("telemetry_wide"))
-readings = spark.table(T("telemetry_readings"))
-sessions = spark.table(T("track_sessions"))
+# Shared inputs (read-only source tables). All lazy: defining them reads no data.
+orders = spark.table(SRC("fact_orders"))
+parts = spark.table(SRC("dim_part"))
+dealers = spark.table(SRC("dim_dealer"))
+customers = spark.table(SRC("dim_customer"))
+customer_history = spark.table(SRC("dim_customer_history"))
+wide = spark.table(SRC("telemetry_wide"))
+readings = spark.table(SRC("telemetry_readings"))
+sessions = spark.table(SRC("track_sessions"))
 
 net_revenue = F.col("quantity") * F.col("unit_price") * (1 - F.col("discount_pct"))
 
@@ -109,17 +50,7 @@ def sample_orders(fraction):
 
 # COMMAND ----------
 
-CURRENT_USER = spark.sql("SELECT current_user()").first()[0]
 DRIVER_RAM_GB = psutil.virtual_memory().total / 1024**3
-SCOREBOARD = T("workshop_scoreboard")
-if spark.catalog.tableExists(SCOREBOARD.replace("`", "")) and "projected_seconds" not in spark.table(SCOREBOARD).columns:
-    spark.sql(f"DROP TABLE {SCOREBOARD}")  # left over from an older version of the workshop
-spark.sql(f"""
-  CREATE TABLE IF NOT EXISTS {SCOREBOARD} (
-    user STRING, scenario STRING, variant STRING, status STRING, seconds DOUBLE, fraction DOUBLE,
-    projected_seconds DOUBLE, driver_mem_gb DOUBLE, projected_mem_gb DOUBLE, detail STRING,
-    recorded_at TIMESTAMP)
-""")
 
 
 def driver_memory_gb():
@@ -133,7 +64,7 @@ def _fmt_seconds(s):
 
 
 def run_timed(scenario, variant, fn, fraction=1.0, scaling="linear", timeout_s=None, note="", detail_fn=None):
-    """Run fn(), print the outcome and append it to the workshop_scoreboard table.
+    """Run fn(), time it and print the outcome.
 
     variant   "Don't", "Better" or "Do".
     fraction  share of the full workload fn() processes (a Don't is usually run on a slice so that it
@@ -211,43 +142,7 @@ def run_timed(scenario, variant, fn, fraction=1.0, scaling="linear", timeout_s=N
     if detail:
         print(f"   {detail}")
 
-    row = (CURRENT_USER, scenario, variant, status, round(seconds, 1), float(fraction),
-           round(projected, 1), round(mem_delta, 2), round(projected_mem, 2), (detail or error or "")[:500])
-    (
-        spark.createDataFrame([row], "user STRING, scenario STRING, variant STRING, status STRING, seconds DOUBLE, "
-                                     "fraction DOUBLE, projected_seconds DOUBLE, driver_mem_gb DOUBLE, "
-                                     "projected_mem_gb DOUBLE, detail STRING")
-        .withColumn("recorded_at", F.current_timestamp())
-        .write.mode("append").saveAsTable(SCOREBOARD)
-    )
     return result
-
-
-def show_scoreboard():
-    """Latest Don't vs Do result per scenario for the current user (read from workshop_scoreboard)."""
-    latest = (
-        spark.table(SCOREBOARD).where(F.col("user") == CURRENT_USER)
-        .groupBy("scenario", "variant")
-        .agg(F.max_by(F.struct("status", "seconds", "fraction", "projected_seconds", "projected_mem_gb"), "recorded_at").alias("r"))
-        .select("scenario", "variant", "r.*")
-    )
-    dont = latest.where(F.col("variant") == "Don't").select(
-        "scenario", F.col("status").alias("dont_status"), F.col("seconds").alias("dont_measured_s"),
-        F.col("fraction").alias("dont_fraction"), F.col("projected_seconds").alias("dont_full_size_s"),
-        F.col("projected_mem_gb").alias("dont_driver_mem_gb"))
-    do = latest.where((F.col("variant") == "Do") & (F.col("status") == "ok")).groupBy("scenario").agg(F.min("seconds").alias("do_s"))
-    return (
-        dont.join(do, "scenario", "full_outer")
-        .withColumn("speedup", F.round(F.col("dont_full_size_s") / F.col("do_s"), 1))
-        .withColumn(
-            "speedup_label",
-            F.concat(
-                F.when(F.col("dont_status") == "timed out", F.lit("> "))
-                .when(F.col("dont_fraction") < 1, F.lit("≈ ")).otherwise(F.lit("")),
-                F.col("speedup").cast("string"), F.lit("x")),
-        )
-        .orderBy("scenario")
-    )
 
 
 def display_now(df, max_rows=10_000, show_rows=100):
@@ -263,7 +158,7 @@ def display_now(df, max_rows=10_000, show_rows=100):
     return len(pdf)
 
 
-print(f"Workshop data: {CATALOG}.{SCHEMA}   raw files: {VOLUME}   Don't timeout: {DONT_TIMEOUT_S} s")
+print(f"Don't timeout: {DONT_TIMEOUT_S} s")
 
 # COMMAND ----------
 
@@ -275,10 +170,10 @@ def check_dealer_scorecard(table, region="Midwest", month="2025-12"):
     """Compare a Genie Code challenge result table with the expected scorecard. Prints a verdict."""
     month_start = F.to_date(F.lit(f"{month}-01"))
     lines = (
-        spark.table(T("fact_orders"))
+        spark.table(SRC("fact_orders"))
         .where((F.col("order_date") >= month_start) & (F.col("order_date") < F.add_months(month_start, 1)))
-        .join(spark.table(T("dim_dealer")).where(F.col("region") == region), "dealer_id")
-        .join(spark.table(T("dim_part")), "part_id")
+        .join(spark.table(SRC("dim_dealer")).where(F.col("region") == region), "dealer_id")
+        .join(spark.table(SRC("dim_part")), "part_id")
         .withColumn("rev", F.col("quantity") * F.col("unit_price") * (1 - F.col("discount_pct")))
     )
     expected = lines.groupBy("dealer_id").agg(

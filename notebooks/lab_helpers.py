@@ -21,14 +21,14 @@ dbutils.widgets.dropdown("auto_solve", "false", ["false", "true"], "Auto-solve e
 dbutils.widgets.text("warehouse_id", "", "SQL warehouse ID (dashboard)")
 AUTO_SOLVE = dbutils.widgets.get("auto_solve") == "true"
 
-LAB_RAW = f"{VOLUME}/lab"
-LAB_CHECKPOINTS = f"{VOLUME}/_checkpoints/endtoend"
-LAB_DASHBOARD_NAME = f"Apex Motorsports Parts - December sales ({SCHEMA})"
+LAB_RAW = f"{SOURCE_VOLUME}/lab"                        # raw files, shared and read-only
+LAB_CHECKPOINTS = f"{USER_VOLUME}/_checkpoints/endtoend"  # Auto Loader state, in your own volume
+LAB_DASHBOARD_NAME = f"Apex Motorsports Parts - December sales ({USER_SCHEMA})"
 
 
 def reset_lab():
     """Drop every endtoend_* table and the lab's Auto Loader checkpoints. The raw files are kept."""
-    for t in spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{SCHEMA}` LIKE 'endtoend_*'").collect():
+    for t in spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{USER_SCHEMA}` LIKE 'endtoend_*'").collect():
         spark.sql(f"DROP TABLE IF EXISTS {T(t.tableName)}")
     dbutils.fs.rm(LAB_CHECKPOINTS, True)
     print("Lab reset: endtoend_* tables dropped, checkpoints cleared.")
@@ -77,7 +77,7 @@ CREATE OR REPLACE TABLE endtoend_silver_parts_dim
 COMMENT 'Parts reference for the end-to-end lab: one row per part, only the columns gold needs'
 AS
 SELECT part_id, part_name, category, list_price, unit_cost
-FROM dim_part
+FROM shared.dim_part
 ''',
     },
     "gold_category_region": {
@@ -167,7 +167,7 @@ def _select_of(name):
 
 
 def _exists(table):
-    return spark.catalog.tableExists(f"{CATALOG}.{SCHEMA}.{table}")
+    return spark.catalog.tableExists(f"{CATALOG}.{USER_SCHEMA}.{table}")
 
 
 def _same_rows(actual, expected, keys, numeric=(), tol=0.05):
@@ -207,7 +207,7 @@ def _check_silver_dealers():
         return False, f"Regions still need cleaning: {bad_regions[:5]}"
     if df.where("dealer_name IS NULL OR trim(dealer_name) = ''").count():
         return False, "Some dealer names are blank: fill them in (e.g. 'Unknown dealer <id>')."
-    stale = df.join(spark.table("dim_dealer").select("dealer_id", F.col("dealer_tier").alias("t")), "dealer_id") \
+    stale = df.join(spark.table(SRC("dim_dealer")).select("dealer_id", F.col("dealer_tier").alias("t")), "dealer_id") \
               .where("dealer_tier <> t").count()
     if stale:
         return False, f"{stale} dealers kept a stale version: order by updated_at and keep the latest."
@@ -296,7 +296,7 @@ def require(*names):
 # a 6-column grid. These helpers write the JSON for the most common widget types.
 
 def dataset(name, display_name, sql):
-    return {"name": name, "displayName": display_name, "queryLines": [sql], "catalog": CATALOG, "schema": SCHEMA}
+    return {"name": name, "displayName": display_name, "queryLines": [sql], "catalog": CATALOG, "schema": USER_SCHEMA}
 
 
 def _widget(name, ds, fields, spec, x, y, w, h):
