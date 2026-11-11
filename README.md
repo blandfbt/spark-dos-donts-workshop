@@ -33,6 +33,7 @@ notebooks/03_genie_code_challenge_solution.py reference solution for the challen
 notebooks/workshop_helpers.py                shared DataFrames over the source tables, timing helpers (%run)
 notebooks/lab_helpers.py                     lab checks, reference solutions, reveal/catch_up, dashboard builders
 notebooks/images/                            diagrams used in the markdown cells
+notebooks/jobs_notebooks/                    the lab's bronze-to-gold logic as a Spark Declarative Pipeline + Lakeflow Job
 genie/                                       ← part 3: Genie agents on the shared gold tables (see genie/README.md)
 instructor_setup/                            🧑‍🏫 instructor only: generate shared data, prebuild gold, create participant schemas
 databricks.yml, resources/jobs.yml           instructor bundle: setup job + optional dry-run job (serverless)
@@ -138,6 +139,11 @@ have `endtoend_gold_*` and `endtoend_silver_*_dim` tables to build on. You can a
 3. Open **`notebooks/01_bronze_to_gold_lab`**, attach **serverless** compute (environment version **5** or later in the
    *Environment* side panel) and run it top to bottom. Leave `auto_solve` at `false`.
 4. Continue with **`notebooks/02_spark_dos_and_donts`**, then the **`genie/`** notebooks.
+5. **Production version of the lab:** run **`notebooks/jobs_notebooks/00_create_pipeline_and_job`**. It creates a
+   Lakeflow Spark Declarative Pipeline from `jobs_notebooks/pipeline/` (Auto Loader bronze, expectations and AUTO CDC
+   in silver, materialized views in gold) and a Lakeflow Job that runs it and then `01_check_pipeline_output`, which
+   compares the pipeline's gold tables with the lab's. Its tables are prefixed `pipeline_` in your schema; every
+   setting (names, schedule, full refresh, run now) is in the notebook's ✏️ settings cell.
 
 Ignore `instructor_setup/`: it's what the instructor ran beforehand.
 
