@@ -20,7 +20,7 @@ and the Genie notebooks. The Lakeflow deck works on its own too.
 
 ## Presenting
 
-Open the HTML file. Use **← / →** (or click) to move between slides, **N** to show speaker notes, and **F** for full
+Open the HTML file. Use **← / →** (or click the left or right quarter of the screen; clicks in the middle do nothing) to move between slides, **N** to show speaker notes, and **F** for full
 screen. A slide number in the URL (`#7`) jumps straight to that slide. Every slide has speaker notes.
 
 ## Rebuild and export

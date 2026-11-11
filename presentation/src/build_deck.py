@@ -421,6 +421,14 @@ SLIDES = [
     ], "big"), "Three parts: the mental model (most of the time), the five categories of mistakes, and the "
               "workshop. I won't walk through all twenty do's and don'ts; the notebook does that with real timings."),
 
+    content("Anatomy of a Spark application", "On serverless, your notebook is a client and Databricks runs the engine",
+            g_anatomy(),
+            takeaway="Only what you explicitly ask for comes back to the notebook. <code>collect()</code> and <code>toPandas()</code> ask for everything.",
+            note="Your notebook sends a plan. The driver optimizes it, cuts it into stages and tasks, and schedules "
+            "tasks on executors — one task per partition. Executors read Delta files directly from cloud storage. "
+            "The only data that comes back to your notebook is what you explicitly ask for: that is where "
+            "collect() and toPandas() hurt."),
+
     content("Scale is a parallelism problem", "The same question, answered two ways",
             g_parallelism() + bullets([
                 "Spark splits data into <b>partitions</b> and works on all of them at once, on many cores",
@@ -429,14 +437,6 @@ SLIDES = [
             "This is the whole talk in one picture. Same 100M rows, same sum. One version drags every row into one "
             "Python process; the other lets dozens of cores each sum a slice and send back one number. Everything "
             "else is a variation of this."),
-
-    content("Anatomy of a Spark application", "On serverless, your notebook is a client and Databricks runs the engine",
-            g_anatomy(),
-            takeaway="Only what you explicitly ask for comes back to the notebook. <code>collect()</code> and <code>toPandas()</code> ask for everything.",
-            note="Your notebook sends a plan. The driver optimizes it, cuts it into stages and tasks, and schedules "
-            "tasks on executors — one task per partition. Executors read Delta files directly from cloud storage. "
-            "The only data that comes back to your notebook is what you explicitly ask for: that is where "
-            "collect() and toPandas() hurt."),
 
     content("Lazy evaluation", "Transformations describe the work, actions run it",
             g_lazy(),
@@ -696,7 +696,9 @@ addEventListener('keydown',e=>{
   else if(e.key==='n'||e.key==='N')notes.classList.toggle('show');
   else if(e.key==='f'||e.key==='F'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();}
 });
-addEventListener('click',e=>{if(e.target.closest('#notes'))return;show(cur+(e.clientX>innerWidth/3?1:-1));});
+addEventListener('click',e=>{if(e.target.closest('#notes'))return;
+  // only the outer quarters navigate: left = back, right = forward; clicks in the middle do nothing
+  if(e.clientX<innerWidth*0.25)show(cur-1);else if(e.clientX>innerWidth*0.75)show(cur+1);});
 addEventListener('resize',fit);fit();show(cur);
 """
 
