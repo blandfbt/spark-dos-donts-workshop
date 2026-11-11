@@ -6,7 +6,7 @@ Fonts, logos and every diagram are embedded, so the HTML works offline and can b
 file. Styling follows the Databricks corporate Google Slides template: navy title and closing slides,
 oat content slides, DM Sans, and the "©2026 Databricks Inc." footer.
 
-Timings quoted on the slides come from the workshop's own scoreboard (serverless, 100M-row fact table).
+Timings quoted on the slides were measured in the workshop's Don't/Do cells (serverless, 100M-row fact table).
 Values marked ≈ are projected from a Don't that ran on a slice of the workload.
 """
 
@@ -567,17 +567,16 @@ SLIDES = [
             "Every pair returns the same answer, except the SCD2 join which is left out here because it returns the "
             "wrong one. The gaps run from 2x to over 100x. Note the log scale."),
 
-    content("The workshop", "Deploy it into your workspace as a Databricks Asset Bundle", """
+    content("The workshop", "Clone the repo into your workspace and set one line", """
     <div class="two even">
       <div class="col plain">
-        <div class="codebox block">databricks bundle deploy -t dev -p &lt;profile&gt; \\
-  --var="catalog=&lt;catalog&gt;" --var="schema=spark_dos_donts"
-
-databricks bundle run -t dev -p &lt;profile&gt; \\
-  spark_dos_donts_setup<span class="cm">   # ~5 min: 100M rows + raw files</span></div>""" + bullets([
+        <div class="codebox block"><span class="cm"># CONFIG.py (top of the repo): the only edit</span>
+CATALOG       = "dbx_workshop_dev"
+SOURCE_SCHEMA = "shared"   <span class="cm"># instructor-built, read-only</span>
+USER_SCHEMA   = "jane_doe" <span class="cm"># your own schema</span></div>""" + bullets([
+                "Instructor, beforehand: <code>instructor_setup/</code> generates the shared data and creates each participant's schema",
                 "<code>01_bronze_to_gold_lab</code>: bronze → silver → gold, SQL and a dashboard, hands-on",
-                "<code>02_spark_dos_and_donts</code>: each topic is a <b>why</b>, then a timed <b>Don't</b> and <b>Do</b>",
-                "Results land in a scoreboard table; every section can resume after a restart",
+                "<code>02_spark_dos_and_donts</code>: each topic is a <b>why</b>, then a timed <b>Don't</b> and <b>Do</b>; every section can resume after a restart",
             ], "tight") + """</div>
       <div class="col plain genie">
         <h3>🧞 Genie Code challenge</h3>
@@ -587,7 +586,8 @@ databricks bundle run -t dev -p &lt;profile&gt; \\
                 "Reference: ~2 min → <b>6 s</b>",
             ]) + """</div>
     </div>""",
-            "Setup is one deploy and one job run. Participants step through the notebook, then spend the last part on "
+            "The instructor has already generated the data into the shared schema and created a schema for each of you. "
+            "You clone the repo, set USER_SCHEMA in CONFIG, and step through the notebooks, then spend the last part on "
             "the Genie Code challenge. Encourage them to question the assistant's answer, not just accept it: the "
             "reference solution deliberately keeps one global window because it runs on 78 rows."),
 
