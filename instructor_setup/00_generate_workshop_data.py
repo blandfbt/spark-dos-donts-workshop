@@ -2,6 +2,8 @@
 # MAGIC %md
 # MAGIC # 00 · Generate the workshop data (instructor, run once before the workshop)
 # MAGIC
+# MAGIC > **Compute:** serverless, **environment version 5 or later** (Environment side panel).
+# MAGIC >
 # MAGIC > 🧑‍🏫 **Instructor only.** Participants don't run this notebook: they read the tables it writes.
 # MAGIC
 # MAGIC **Apex Motorsports Parts** (a fictional company) sells performance parts through 500 dealers and

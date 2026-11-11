@@ -12,6 +12,8 @@
 # MAGIC
 # MAGIC Your instructor has already created your schema (`dbx_workshop_dev.<firstname_lastname>`) and given you full
 # MAGIC access to it. Type its name between the quotes on the `USER_SCHEMA` line below and save; that's it.
+# MAGIC
+# MAGIC **Compute:** every notebook runs on **serverless** with **environment version 5 or later** (Environment side panel).
 
 # COMMAND ----------
 
@@ -24,6 +26,15 @@ USER_SCHEMA = ""  # ✏️ your schema, e.g. "jane_doe"
 
 # DBTITLE 1,Derived settings (no need to edit)
 import re
+import sys
+
+# Serverless environment version 1 (Python 3.10) ships an old Databricks SDK and has no df.cache(). The workshop needs
+# environment version 5 or later: open the Environment side panel (right edge) and pick it, then rerun.
+if sys.version_info < (3, 11):
+    raise RuntimeError(
+        f"This notebook runs on Python {sys.version.split()[0]} (serverless environment 1). Open the Environment side "
+        "panel, set Environment version to 5 or later, click Apply, and rerun the notebook."
+    )
 
 # Jobs (the instructor's bundle) can override the three settings above with job parameters of the same name.
 # Opened by hand, there are no such parameters and the values above are used.

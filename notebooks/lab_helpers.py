@@ -368,26 +368,28 @@ def _dashboard_id(w, display_name):
 
 
 def publish_dashboard(datasets, widgets, display_name=LAB_DASHBOARD_NAME):
-    """Create (or update) and publish the dashboard in your home folder. Returns its URL."""
+    """Create (or update) and publish the dashboard in your home folder. Returns its URL.
+
+    Calls the Lakeview REST API directly, so it works with any databricks-sdk version on serverless."""
     from databricks.sdk import WorkspaceClient
-    from databricks.sdk.service.dashboards import Dashboard
 
     w = WorkspaceClient()
     serialized = json.dumps({"datasets": datasets,
                              "pages": [{"name": "overview", "displayName": "Overview", "pageType": "PAGE_TYPE_CANVAS",
                                         "layout": widgets}]})
-    parent = f"/Users/{CURRENT_USER}"
     warehouse = _warehouse_id(w)
-    spec = Dashboard(display_name=display_name, parent_path=parent, serialized_dashboard=serialized, warehouse_id=warehouse)
+    body = {"display_name": display_name, "parent_path": f"/Users/{CURRENT_USER}",
+            "serialized_dashboard": serialized, "warehouse_id": warehouse}
     existing_id = _dashboard_id(w, display_name)
     if existing_id:
-        dash = w.lakeview.update(existing_id, dashboard=spec)
+        dashboard_id = w.api_client.do("PATCH", f"/api/2.0/lakeview/dashboards/{existing_id}", body=body)["dashboard_id"]
     else:
-        dash = w.lakeview.create(dashboard=spec)
-    w.lakeview.publish(dash.dashboard_id, warehouse_id=warehouse, embed_credentials=True)
-    url = f"{w.config.host.rstrip('/')}/dashboardsv3/{dash.dashboard_id}/published"
+        dashboard_id = w.api_client.do("POST", "/api/2.0/lakeview/dashboards", body=body)["dashboard_id"]
+    w.api_client.do("POST", f"/api/2.0/lakeview/dashboards/{dashboard_id}/published",
+                    body={"warehouse_id": warehouse, "embed_credentials": True})
+    url = f"{w.config.host.rstrip('/')}/dashboardsv3/{dashboard_id}/published"
     print(f"📊 {display_name}: {len(widgets)} widgets, {len(datasets)} datasets\n   {url}")
-    return dash.dashboard_id, url
+    return dashboard_id, url
 
 
 def dashboard_widget_count(display_name=LAB_DASHBOARD_NAME):
@@ -397,5 +399,5 @@ def dashboard_widget_count(display_name=LAB_DASHBOARD_NAME):
     dashboard_id = _dashboard_id(w, display_name)
     if not dashboard_id:
         return 0
-    full = json.loads(w.lakeview.get(dashboard_id).serialized_dashboard)
+    full = json.loads(w.api_client.do("GET", f"/api/2.0/lakeview/dashboards/{dashboard_id}")["serialized_dashboard"])
     return sum(len(p["layout"]) for p in full["pages"])

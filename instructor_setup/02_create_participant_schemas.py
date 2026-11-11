@@ -2,6 +2,8 @@
 # MAGIC %md
 # MAGIC # 02 · Create the participant schemas and grants (instructor, before the workshop)
 # MAGIC
+# MAGIC > **Compute:** serverless, **environment version 5 or later** (Environment side panel).
+# MAGIC >
 # MAGIC > 🧑‍🏫 **Instructor only.** Participants can't create schemas; this notebook does it for them.
 # MAGIC
 # MAGIC For every participant email below it:

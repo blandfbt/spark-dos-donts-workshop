@@ -2,6 +2,8 @@
 # MAGIC %md
 # MAGIC # 01 · Prebuild the shared lab tables (instructor, run once after 00)
 # MAGIC
+# MAGIC > **Compute:** serverless, **environment version 5 or later** (Environment side panel).
+# MAGIC >
 # MAGIC > 🧑‍🏫 **Instructor only.** Participants don't run this notebook.
 # MAGIC
 # MAGIC Runs `notebooks/01_bronze_to_gold_lab` with every exercise **auto-solved**, writing into the shared source
