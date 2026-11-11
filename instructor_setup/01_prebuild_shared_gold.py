@@ -30,21 +30,25 @@ INSTRUCTOR_SETUP = True
 
 # COMMAND ----------
 
-# DBTITLE 1,Run the lab auto-solved into the shared schema
-result = dbutils.notebook.run(
-    "../notebooks/01_bronze_to_gold_lab",
-    3600,
-    {
-        "catalog": CATALOG,
-        "source_schema": SOURCE_SCHEMA,
-        "user_schema": SOURCE_SCHEMA,            # the lab's "own schema" is the shared schema for this one run
-        "allow_source_schema_writes": "true",    # CONFIG refuses this unless explicitly allowed
-        "auto_solve": "true",
-        "warehouse_id": _job_param("warehouse_id", ""),
-        "workshop_tag": WORKSHOP_TAG,
-    },
-)
-print("Lab finished", result or "")
+# DBTITLE 1,Point the lab at the shared schema
+# The lab is included with %run below, so it runs in this notebook's session and serverless environment.
+# (dbutils.notebook.run would start it on serverless environment 1, which is too old for the lab.)
+# These overrides are read by CONFIG and lab_helpers while the lab runs; nothing else changes.
+PREBUILD_OVERRIDES = {
+    "catalog": CATALOG,
+    "source_schema": SOURCE_SCHEMA,
+    "user_schema": SOURCE_SCHEMA,            # the lab's "own schema" is the shared schema for this one run
+    "allow_source_schema_writes": "true",    # CONFIG refuses this unless explicitly allowed
+    "auto_solve": "true",                    # every exercise is solved from the reference solution
+    "warehouse_id": _job_param("warehouse_id", ""),
+    "workshop_tag": WORKSHOP_TAG,
+}
+INSTRUCTOR_SETUP = False  # the lab's own %run ../CONFIG must set up the (shared) schema as its target
+
+# COMMAND ----------
+
+# DBTITLE 1,Run the lab auto-solved into the shared schema (~5 min)
+# MAGIC %run ../notebooks/01_bronze_to_gold_lab
 
 # COMMAND ----------
 
@@ -56,3 +60,4 @@ assert not missing, f"Missing in {CATALOG}.{SOURCE_SCHEMA}: {missing}"
 for t in needed:
     print(f"✅ {CATALOG}.{SOURCE_SCHEMA}.{t:40} {spark.table(SRC(t)).count():>12,} rows")
 tag_workshop_objects(SOURCE_SCHEMA)
+PREBUILD_OVERRIDES = {}  # back to normal for anything run in this session afterwards

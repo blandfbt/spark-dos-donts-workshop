@@ -19,7 +19,7 @@ import re
 
 dbutils.widgets.dropdown("auto_solve", "false", ["false", "true"], "Auto-solve exercises")
 dbutils.widgets.text("warehouse_id", "", "SQL warehouse ID (dashboard)")
-AUTO_SOLVE = dbutils.widgets.get("auto_solve") == "true"
+AUTO_SOLVE = _job_param("auto_solve", "false") == "true"  # _job_param (CONFIG) also sees the prebuild overrides
 
 LAB_RAW = f"{SOURCE_VOLUME}/lab"                        # raw files, shared and read-only
 LAB_CHECKPOINTS = f"{USER_VOLUME}/_checkpoints/endtoend"  # Auto Loader state, in your own volume
@@ -350,7 +350,7 @@ def text(name, markdown, x, y, w=6, h=2):
 
 
 def _warehouse_id(w):
-    chosen = dbutils.widgets.get("warehouse_id").strip()
+    chosen = _job_param("warehouse_id", "")
     if chosen:
         return chosen
     warehouses = sorted(w.warehouses.list(), key=lambda wh: (not wh.enable_serverless_compute, str(wh.state) != "State.RUNNING"))

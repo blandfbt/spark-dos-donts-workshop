@@ -37,8 +37,12 @@ if sys.version_info < (3, 11):
     )
 
 # Jobs (the instructor's bundle) can override the three settings above with job parameters of the same name.
-# Opened by hand, there are no such parameters and the values above are used.
+# instructor_setup/01_prebuild_shared_gold sets PREBUILD_OVERRIDES before it %runs the lab (a %run can't pass
+# parameters on to the notebooks the lab includes). Opened by hand, neither exists and the values above are used.
 def _job_param(name, default):
+    overrides = globals().get("PREBUILD_OVERRIDES") or {}
+    if name in overrides:
+        return str(overrides[name])
     try:
         return dbutils.widgets.get(name).strip() or default
     except Exception:
