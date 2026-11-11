@@ -416,7 +416,7 @@ SLIDES = [
         "How Spark runs your code: driver, executors, lazy plans",
         "Where the time goes: shuffles, joins, data layout",
         "What serverless and Photon do for you, and what they can't",
-        "Five ways to fight the engine, and what to do instead",
+        "Five ways to leverage the engine, and the anti-patterns to avoid",
         "The workshop and the Genie Code challenge",
     ], "big"), "Three parts: the mental model (most of the time), the five categories of mistakes, and the "
               "workshop. I won't walk through all twenty do's and don'ts; the notebook does that with real timings."),
@@ -500,7 +500,7 @@ SLIDES = [
             "thresholds. On serverless you can't even set them. What's left is the shape of your code, and that's "
             "exactly what the five categories are about."),
 
-    section_slide("The do's and don'ts", "Five ways to fight the engine", [
+    section_slide("The do's and don'ts", "Five ways to leverage the engine", [
         "Keep the work on the executors", "Let the optimizer see your intent", "Don't do the work twice",
         "Respect the data layout", "Know your keys and your platform",
     ], "Every one of the twenty workshop scenarios falls into one of these five buckets. For each I'll show the "
