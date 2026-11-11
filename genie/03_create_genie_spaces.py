@@ -29,10 +29,10 @@
 # MAGIC
 # MAGIC | table | grain |
 # MAGIC |---|---|
-# MAGIC | `endtoend_gold_daily_dealer_sales_fact` | one row per day × dealer, December 2025: orders, units, net revenue, margin |
-# MAGIC | `endtoend_gold_category_region_fact` | one row per region × part category, December 2025 |
-# MAGIC | `endtoend_silver_dealers_dim` | one row per dealer: name, region, state, tier |
-# MAGIC | `endtoend_silver_parts_dim` | one row per part: name, category, list price, unit cost |
+# MAGIC | `lab_gold_daily_dealer_sales_fact` | one row per day × dealer, December 2025: orders, units, net revenue, margin |
+# MAGIC | `lab_gold_category_region_fact` | one row per region × part category, December 2025 |
+# MAGIC | `lab_silver_dealers_dim` | one row per dealer: name, region, state, tier |
+# MAGIC | `lab_silver_parts_dim` | one row per part: name, category, list price, unit cost |
 # MAGIC
 # MAGIC > **Two ways to build: we show both.** This notebook creates the agent **programmatically** so everyone gets the
 # MAGIC > same result by running the same cell. You can also do it in the **UI**: **New → Genie** in the sidebar, pick the
@@ -113,7 +113,7 @@ for t in GENIE_SOURCE_TABLES:
 # MAGIC %md
 # MAGIC ## Create the baseline agent and save its ID
 # MAGIC
-# MAGIC The ID is stored in **your** `workshop_config` table under `genie_space_id_blank` so notebook **08** can compare
+# MAGIC The ID is stored in **your** `genie_workshop_config` table under `genie_space_id_blank` so notebook **08** can compare
 # MAGIC it against the curated and metric-view agents. `save_config_keys` upserts, so 03 / 03b / 04 don't clobber each other.
 
 # COMMAND ----------
@@ -144,7 +144,7 @@ print("table: exactly the gap 03b and 04 close.")
 # MAGIC %md
 # MAGIC ## Your agents as clickable links
 # MAGIC
-# MAGIC Render every agent id saved in your `workshop_config` table as a link you can open.
+# MAGIC Render every agent id saved in your `genie_workshop_config` table as a link you can open.
 
 # COMMAND ----------
 

@@ -41,7 +41,7 @@ variables:
     description: Existing schema the dry-run job writes to (the instructor's own participant schema).
     default: ""
   fact_rows:
-    description: Rows in fact_orders. 100M makes the Don'ts clearly hurt; 20M is a quick smoke test.
+    description: Rows in sdd_fact_orders. 100M makes the Don'ts clearly hurt; 20M is a quick smoke test.
     default: "100000000"
   dont_timeout_seconds:
     description: Each "Don't" cell is cancelled after this many seconds and recorded as timed out.

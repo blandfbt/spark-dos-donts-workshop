@@ -19,13 +19,13 @@ The agents read four tables that the instructor prebuilds in the shared, **read-
 
 | table | grain |
 |---|---|
-| `endtoend_gold_daily_dealer_sales_fact` | day × dealer, December 2025: orders, units, net revenue, margin |
-| `endtoend_gold_category_region_fact` | region × part category: orders, units, net revenue, margin, margin % |
-| `endtoend_silver_dealers_dim` | dealer: name, region, state, tier |
-| `endtoend_silver_parts_dim` | part: name, category, list price, unit cost |
+| `lab_gold_daily_dealer_sales_fact` | day × dealer, December 2025: orders, units, net revenue, margin |
+| `lab_gold_category_region_fact` | region × part category: orders, units, net revenue, margin, margin % |
+| `lab_silver_dealers_dim` | dealer: name, region, state, tier |
+| `lab_silver_parts_dim` | part: name, category, list price, unit cost |
 
-Everything you create goes to **your** schema (`USER_SCHEMA` in `CONFIG`): the metric views `mv_dealer_sales` and
-`mv_category_sales`, the `workshop_config` table (your agent IDs) and `genie_benchmark_runs`. Agent titles include
+Everything you create goes to **your** schema (`USER_SCHEMA` in `CONFIG`): the metric views `genie_mv_dealer_sales` and
+`genie_mv_category_sales`, the `genie_workshop_config` table (your agent IDs) and `genie_benchmark_runs`. Agent titles include
 your schema name, for example `Apex Motorsports Parts - Knowledge Store (jane_doe)`, so agents don't collide in a
 shared workspace. The same goes for the Genie Code agent (07) and the CI/CD demo copy (11); `genie_helpers` prints all
 five names when it runs.

@@ -258,7 +258,7 @@ def g_pipeline_lab():
     s.line(1100, 190, 1190, 335, MUTED, 2.5)
     s.line(1100, 410, 1190, 200, MUTED, 2.5)
     s.line(1100, 420, 1190, 355, MUTED, 2.5)
-    s.text(1360, 445, "all written as pipeline_* tables in dbx_workshop_dev.<user_schema>", 19, MUTED, 400, "middle", italic=True)
+    s.text(1360, 445, "all written as lakeflow_* tables in dbx_workshop_dev.<user_schema>", 19, MUTED, 400, "middle", italic=True)
     return s.render()
 
 
@@ -350,27 +350,27 @@ def g_ref_arch():
 
 # --------------------------------------------------------------------------------------------- slides
 
-SDP_SQL = """CREATE OR REFRESH STREAMING TABLE pipeline_silver_orders_valid (
+SDP_SQL = """CREATE OR REFRESH STREAMING TABLE lakeflow_silver_orders_valid (
   CONSTRAINT known_dealer      EXPECT (dealer_id IS NOT NULL) ON VIOLATION DROP ROW,
   CONSTRAINT positive_quantity EXPECT (quantity > 0)          ON VIOLATION DROP ROW
 ) AS SELECT try_cast(order_id AS BIGINT) AS order_id, ...
-FROM STREAM(pipeline_bronze_orders_fact);
+FROM STREAM(lakeflow_bronze_orders_fact);
 
-CREATE OR REFRESH STREAMING TABLE pipeline_silver_orders_fact;
-CREATE FLOW pipeline_silver_orders_dedupe AS AUTO CDC INTO pipeline_silver_orders_fact
-FROM STREAM(pipeline_silver_orders_valid)
+CREATE OR REFRESH STREAMING TABLE lakeflow_silver_orders_fact;
+CREATE FLOW lakeflow_silver_orders_dedupe AS AUTO CDC INTO lakeflow_silver_orders_fact
+FROM STREAM(lakeflow_silver_orders_valid)
 KEYS (order_id) SEQUENCE BY sent_at STORED AS SCD TYPE 1;
 
-CREATE OR REFRESH MATERIALIZED VIEW pipeline_gold_daily_dealer_sales_fact
+CREATE OR REFRESH MATERIALIZED VIEW lakeflow_gold_daily_dealer_sales_fact
 AS SELECT to_date(o.order_ts) AS order_date, d.region, ..., sum(o.net_revenue) AS net_revenue
-FROM pipeline_silver_orders_fact o JOIN pipeline_silver_dealers_dim d USING (dealer_id) GROUP BY ALL;"""
+FROM lakeflow_silver_orders_fact o JOIN lakeflow_silver_dealers_dim d USING (dealer_id) GROUP BY ALL;"""
 
 SDP_PY = """from pyspark import pipelines as dp
 
-dp.create_streaming_table("pipeline_silver_orders_fact")
+dp.create_streaming_table("lakeflow_silver_orders_fact")
 dp.create_auto_cdc_flow(
-    target="pipeline_silver_orders_fact",
-    source="pipeline_silver_orders_valid",
+    target="lakeflow_silver_orders_fact",
+    source="lakeflow_silver_orders_valid",
     keys=["order_id"], sequence_by="sent_at",
     stored_as_scd_type=1)   # 2 keeps full history"""
 
@@ -496,12 +496,12 @@ SELECT * FROM STREAM read_files('/Volumes/...', format => 'json')""") + """</div
     content("Three building blocks", "Choosing between a streaming table, a materialized view and a view",
             table(["", "What it is", "Use it for", "Workshop example"], [
                 ["Streaming table", "Append-only, processes each input row once (incremental)",
-                 "Ingestion, append-only facts, CDC targets", "<code>pipeline_bronze_orders_fact</code>"],
+                 "Ingestion, append-only facts, CDC targets", "<code>lakeflow_bronze_orders_fact</code>"],
                 ["Materialized view", "The result of a query, kept up to date; refreshed incrementally when possible",
-                 "Joins, aggregates, gold tables", "<code>pipeline_gold_daily_dealer_sales_fact</code>"],
+                 "Joins, aggregates, gold tables", "<code>lakeflow_gold_daily_dealer_sales_fact</code>"],
                 ["View", "Not stored; computed when read", "Intermediate logic you don't need to keep", "an intermediate cleaning step"],
                 ["Flow", "A query that writes into a target: append, AUTO CDC, update",
-                 "Many sources into one table; backfills", "<code>pipeline_silver_orders_dedupe</code>"],
+                 "Many sources into one table; backfills", "<code>lakeflow_silver_orders_dedupe</code>"],
             ]) + '<p class="note-s">Streaming tables and materialized views also work outside a pipeline: create them in Databricks SQL or a notebook.</p>',
             "Most of the design work is picking the right object. Streaming tables for anything that only grows: they "
             "read each input row once. Materialized views for anything derived, joins and aggregations: they're "
@@ -535,7 +535,7 @@ SELECT * FROM STREAM read_files('/Volumes/...', format => 'json')""") + """</div
         ["<code>… DROP ROW</code>", "dropped; counted", "bad rows must not flow on"],
         ["<code>… FAIL UPDATE</code>", "the update stops", "bad data means a broken source"],
     ], "compact") + """<p class="note-s">Quarantine pattern: a second flow selects the rows that fail the rule into
-    their own table, as the lab's <code>endtoend_quarantine_orders_fact</code> does.</p></div><div>""" + bullets([
+    their own table, as the lab's <code>lab_quarantine_orders_fact</code> does.</p></div><div>""" + bullets([
         "Results land in the pipeline <b>event log</b>: pass/fail counts per rule, per update",
         "Delta <code>CHECK</code> constraints still guard writes from anywhere else",
         "Expectations are a Databricks extension (not in open-source SDP)",

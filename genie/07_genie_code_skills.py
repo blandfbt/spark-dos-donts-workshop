@@ -32,13 +32,13 @@
 # MAGIC %md
 # MAGIC ## Connect and load the primary agent
 # MAGIC
-# MAGIC Read the Knowledge Store agent id from your `workshop_config` table.
+# MAGIC Read the Knowledge Store agent id from your `genie_workshop_config` table.
 
 # COMMAND ----------
 
 PRIMARY_SPACE_ID = load_config().get(CFG_KEY_CURATED, "")
 if not PRIMARY_SPACE_ID:
-    raise RuntimeError("genie_space_id not found in workshop_config. Run notebook 04 first.")
+    raise RuntimeError("genie_space_id not found in genie_workshop_config. Run notebook 04 first.")
 print(f"Primary agent: {genie_ui_room_url(PRIMARY_SPACE_ID)}")
 
 # COMMAND ----------
@@ -174,10 +174,10 @@ IMPORTANT: Create the agent directly. Do NOT generate a notebook with API code.
 Use your built-in ability to create and configure a Genie agent.
 
 My tables are in {SOURCE_FQN} (read-only; December 2025 data for Apex Motorsports Parts, a fictional performance-parts seller):
-- endtoend_gold_daily_dealer_sales_fact (order_date, region, dealer_id, dealer_name, dealer_tier, orders, units, net_revenue, margin): one row per day and dealer
-- endtoend_gold_category_region_fact (region, category, orders, units, net_revenue, margin, margin_pct): one row per region and part category
-- endtoend_silver_dealers_dim (dealer_id, dealer_name, region, state, dealer_tier, updated_at): one row per dealer
-- endtoend_silver_parts_dim (part_id, part_name, category, list_price, unit_cost): one row per part
+- lab_gold_daily_dealer_sales_fact (order_date, region, dealer_id, dealer_name, dealer_tier, orders, units, net_revenue, margin): one row per day and dealer
+- lab_gold_category_region_fact (region, category, orders, units, net_revenue, margin, margin_pct): one row per region and part category
+- lab_silver_dealers_dim (dealer_id, dealer_name, region, state, dealer_tier, updated_at): one row per dealer
+- lab_silver_parts_dim (part_id, part_name, category, list_price, unit_cost): one row per part
 
 The agent should help sales managers answer questions about:
 - Net revenue and margin by day, week, region, dealer tier, dealer and state
@@ -188,8 +188,8 @@ The agent should help sales managers answer questions about:
 Key business rules to include in the agent instructions:
 - Margin % = 100 * SUM(margin) / SUM(net_revenue). Never average margin_pct or daily percentages.
 - Average revenue per order = SUM(net_revenue) / SUM(orders)
-- Dealer state is a two-letter code (TX, CA, MI, ...) in endtoend_silver_dealers_dim; join it on dealer_id
-- Part category questions use endtoend_gold_category_region_fact (it has no dates or dealers)
+- Dealer state is a two-letter code (TX, CA, MI, ...) in lab_silver_dealers_dim; join it on dealer_id
+- Part category questions use lab_gold_category_region_fact (it has no dates or dealers)
 - Weeks start on Monday: CAST(DATE_TRUNC('WEEK', order_date) AS DATE)
 - Use exact string match (= 'Midwest') for region, dealer_tier and category
 - For integer counts use CAST(... AS BIGINT); round money and rates to 2 decimals
@@ -240,8 +240,8 @@ Generate these sections:
 5. Categories: margin % and net revenue by part category, and a region x category heatmap of margin %
 6. Executive summary: net revenue, margin %, orders, average revenue per order, best region, best category
 
-Use SQL cells where possible. Join path: endtoend_gold_daily_dealer_sales_fact.dealer_id ->
-endtoend_silver_dealers_dim.dealer_id (for state). Margin % is always 100 * SUM(margin) / SUM(net_revenue).
+Use SQL cells where possible. Join path: lab_gold_daily_dealer_sales_fact.dealer_id ->
+lab_silver_dealers_dim.dealer_id (for state). Margin % is always 100 * SUM(margin) / SUM(net_revenue).
 """
 
 print("=" * 70)

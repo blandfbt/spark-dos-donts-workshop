@@ -31,20 +31,20 @@ DONT_TIMEOUT_S = int(_job_param("dont_timeout_seconds", "120"))  # _job_param is
 # COMMAND ----------
 
 # Shared inputs (read-only source tables). All lazy: defining them reads no data.
-orders = spark.table(SRC("fact_orders"))
-parts = spark.table(SRC("dim_part"))
-dealers = spark.table(SRC("dim_dealer"))
-customers = spark.table(SRC("dim_customer"))
-customer_history = spark.table(SRC("dim_customer_history"))
-wide = spark.table(SRC("telemetry_wide"))
-readings = spark.table(SRC("telemetry_readings"))
-sessions = spark.table(SRC("track_sessions"))
+orders = spark.table(SRC("sdd_fact_orders"))
+parts = spark.table(SRC("sdd_dim_part"))
+dealers = spark.table(SRC("sdd_dim_dealer"))
+customers = spark.table(SRC("sdd_dim_customer"))
+customer_history = spark.table(SRC("sdd_dim_customer_history"))
+wide = spark.table(SRC("sdd_telemetry_wide"))
+readings = spark.table(SRC("sdd_telemetry_readings"))
+sessions = spark.table(SRC("sdd_track_sessions"))
 
 net_revenue = F.col("quantity") * F.col("unit_price") * (1 - F.col("discount_pct"))
 
 
 def sample_orders(fraction):
-    """A deterministic slice of fact_orders: `fraction` of the rows, chosen by order_id."""
+    """A deterministic slice of sdd_fact_orders: `fraction` of the rows, chosen by order_id."""
     return orders.where(F.col("order_id") % 1000 < int(round(fraction * 1000)))
 
 
@@ -170,10 +170,10 @@ def check_dealer_scorecard(table, region="Midwest", month="2025-12"):
     """Compare a Genie Code challenge result table with the expected scorecard. Prints a verdict."""
     month_start = F.to_date(F.lit(f"{month}-01"))
     lines = (
-        spark.table(SRC("fact_orders"))
+        spark.table(SRC("sdd_fact_orders"))
         .where((F.col("order_date") >= month_start) & (F.col("order_date") < F.add_months(month_start, 1)))
-        .join(spark.table(SRC("dim_dealer")).where(F.col("region") == region), "dealer_id")
-        .join(spark.table(SRC("dim_part")), "part_id")
+        .join(spark.table(SRC("sdd_dim_dealer")).where(F.col("region") == region), "dealer_id")
+        .join(spark.table(SRC("sdd_dim_part")), "part_id")
         .withColumn("rev", F.col("quantity") * F.col("unit_price") * (1 - F.col("discount_pct")))
     )
     expected = lines.groupBy("dealer_id").agg(

@@ -1,6 +1,6 @@
 ---
 name: apex-motorsports-analytics
-description: Apex Motorsports Parts sales domain knowledge (dealers, regions, tiers, part categories, net revenue, margin) + Genie agent best practices. Use this skill when building Genie agents, writing sales analytics on the endtoend_gold_* / endtoend_silver_* tables, or creating evaluation benchmarks.
+description: Apex Motorsports Parts sales domain knowledge (dealers, regions, tiers, part categories, net revenue, margin) + Genie agent best practices. Use this skill when building Genie agents, writing sales analytics on the lab_gold_* / lab_silver_* tables, or creating evaluation benchmarks.
 ---
 
 # Apex Motorsports Parts analytics
@@ -16,13 +16,13 @@ participant has their own schema for anything they create; **never write to the 
 
 | table | grain | columns |
 |---|---|---|
-| `endtoend_gold_daily_dealer_sales_fact` | one row per `order_date` × dealer | order_date, region, dealer_id, dealer_name, dealer_tier, orders, units, net_revenue, margin |
-| `endtoend_gold_category_region_fact` | one row per region × part category | region, category, orders, units, net_revenue, margin, margin_pct |
-| `endtoend_silver_dealers_dim` | one row per dealer | dealer_id, dealer_name, region, state, dealer_tier, updated_at |
-| `endtoend_silver_parts_dim` | one row per part | part_id, part_name, category, list_price, unit_cost |
+| `lab_gold_daily_dealer_sales_fact` | one row per `order_date` × dealer | order_date, region, dealer_id, dealer_name, dealer_tier, orders, units, net_revenue, margin |
+| `lab_gold_category_region_fact` | one row per region × part category | region, category, orders, units, net_revenue, margin, margin_pct |
+| `lab_silver_dealers_dim` | one row per dealer | dealer_id, dealer_name, region, state, dealer_tier, updated_at |
+| `lab_silver_parts_dim` | one row per part | part_id, part_name, category, list_price, unit_cost |
 
-Silver tables `endtoend_silver_orders_fact` (order-line grain, with channel and customer) and the 100M-row star
-schema (`fact_orders`, `dim_*`) also exist in the shared schema but are **not** part of the Genie agents.
+Silver tables `lab_silver_orders_fact` (order-line grain, with channel and customer) and the 100M-row star
+schema (`sdd_fact_orders`, `dim_*`) also exist in the shared schema but are **not** part of the Genie agents.
 
 ### Key metrics
 
@@ -48,10 +48,10 @@ schema (`fact_orders`, `dim_*`) also exist in the shared schema but are **not** 
 
 ### Join paths
 
-- `endtoend_gold_daily_dealer_sales_fact.dealer_id` → `endtoend_silver_dealers_dim.dealer_id` (many-to-one): the only
+- `lab_gold_daily_dealer_sales_fact.dealer_id` → `lab_silver_dealers_dim.dealer_id` (many-to-one): the only
   way to get a dealer's **state**. Region, tier and name are already on the daily table.
-- `endtoend_gold_category_region_fact` has **no** date or dealer: category questions can be sliced by region only.
-- `endtoend_silver_parts_dim` has no sales: use it for catalog questions (list price, unit cost, part counts).
+- `lab_gold_category_region_fact` has **no** date or dealer: category questions can be sliced by region only.
+- `lab_silver_parts_dim` has no sales: use it for catalog questions (list price, unit cost, part counts).
 - A question that needs both part category and dealer/date/tier can't be answered from the gold tables; say so.
 
 ### Analysis patterns
@@ -125,8 +125,8 @@ the **Benchmark** tab:
 ### Metric views
 
 For governed KPIs, define a metric view (`CREATE VIEW ... WITH METRICS LANGUAGE YAML`) with the joins and measure
-formulas pinned, and query it with `MEASURE(<measure>)`. Here: `mv_dealer_sales` (daily table + dealers dim) and
-`mv_category_sales` (category table), both in the participant's own schema. A metric view can only answer questions
+formulas pinned, and query it with `MEASURE(<measure>)`. Here: `genie_mv_dealer_sales` (daily table + dealers dim) and
+`genie_mv_category_sales` (category table), both in the participant's own schema. A metric view can only answer questions
 inside its perimeter.
 
 ### CI/CD

@@ -12,9 +12,9 @@
 # MAGIC
 # MAGIC | file | what it declares | lab section it replaces |
 # MAGIC |---|---|---|
-# MAGIC | `pipeline/01_bronze.py` | `pipeline_bronze_orders_fact` (Auto Loader streaming table), `pipeline_bronze_dealers_dim` | 1 · Bronze |
+# MAGIC | `pipeline/01_bronze.py` | `lakeflow_bronze_orders_fact` (Auto Loader streaming table), `lakeflow_bronze_dealers_dim` | 1 · Bronze |
 # MAGIC | `pipeline/02_silver.sql` | typed orders with **expectations**, **AUTO CDC** de-duplication, quarantine, dealers and parts dims | 2 · Silver |
-# MAGIC | `pipeline/03_gold.sql` | `pipeline_gold_daily_dealer_sales_fact`, `pipeline_gold_category_region_fact` (materialized views) | 3 · Gold |
+# MAGIC | `pipeline/03_gold.sql` | `lakeflow_gold_daily_dealer_sales_fact`, `lakeflow_gold_category_region_fact` (materialized views) | 3 · Gold |
 # MAGIC
 # MAGIC **What changes compared with the notebook:** you declare *what* each table is, and the pipeline works out the
 # MAGIC order, runs it incrementally, manages Auto Loader's checkpoint and schema, tracks data quality, and keeps lineage.
@@ -24,8 +24,8 @@
 # MAGIC `01_check_pipeline_output`) that runs only after the pipeline succeeds and compares your gold tables with the
 # MAGIC instructor's reference copy in `shared`.
 # MAGIC
-# MAGIC Everything reads the shared raw files (read-only) and writes to **your** schema. Tables are prefixed `pipeline_`,
-# MAGIC so they sit next to your lab's `endtoend_*` tables without colliding. Rerunning this notebook updates the pipeline
+# MAGIC Everything reads the shared raw files (read-only) and writes to **your** schema. Tables are prefixed `lakeflow_`,
+# MAGIC so they sit next to your lab's `lab_*` tables without colliding. Rerunning this notebook updates the pipeline
 # MAGIC and job in place instead of creating duplicates.
 
 # COMMAND ----------
@@ -167,7 +167,7 @@ print(f"  {HOST}/jobs/{JOB_ID}" + (f"   schedule: {SCHEDULE_CRON} ({SCHEDULE_TIM
 # MAGIC ## 3 · Run it
 # MAGIC
 # MAGIC While it runs, open the **job** link to watch the two tasks, and the **pipeline** link to see the graph: each
-# MAGIC table as a node, rows written, and the expectation results on `pipeline_silver_orders_valid` (how many rows each
+# MAGIC table as a node, rows written, and the expectation results on `lakeflow_silver_orders_valid` (how many rows each
 # MAGIC rule dropped). A first run takes a few minutes; a second run with no new files finishes much faster, because the
 # MAGIC streaming tables only read what's new.
 
@@ -205,14 +205,14 @@ else:
 # COMMAND ----------
 
 # DBTITLE 1,🧹 Optional cleanup
-# Deletes the job and the pipeline, then drops the pipeline_* tables (deleting a pipeline leaves its tables behind).
-# Your lab's endtoend_* tables are untouched.
+# Deletes the job and the pipeline, then drops the lakeflow_* tables (deleting a pipeline leaves its tables behind).
+# Your lab's lab_* tables are untouched.
 CLEAN_UP = False
 if CLEAN_UP:
     api("POST", "/api/2.2/jobs/delete", body={"job_id": JOB_ID})
     api("DELETE", f"/api/2.0/pipelines/{PIPELINE_ID}")
-    for t in spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{USER_SCHEMA}` LIKE 'pipeline_*'").collect():
+    for t in spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{USER_SCHEMA}` LIKE 'lakeflow_*'").collect():
         kind = spark.sql(f"DESCRIBE TABLE EXTENDED {T(t.tableName)}").where("col_name = 'Type'").first()
         keyword = "MATERIALIZED VIEW" if kind and "MATERIALIZED" in kind.data_type.upper() else "TABLE"
         spark.sql(f"DROP {keyword} IF EXISTS {T(t.tableName)}")
-    print(f"Deleted job {JOB_NAME}, pipeline {PIPELINE_NAME} and its pipeline_* tables")
+    print(f"Deleted job {JOB_NAME}, pipeline {PIPELINE_NAME} and its lakeflow_* tables")

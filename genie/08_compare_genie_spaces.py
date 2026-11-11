@@ -49,7 +49,7 @@
 # MAGIC %md
 # MAGIC ## Connect and load the three agent IDs
 # MAGIC
-# MAGIC Read the Baseline, Metric View and Knowledge Store ids from your `workshop_config` table so we can compare them.
+# MAGIC Read the Baseline, Metric View and Knowledge Store ids from your `genie_workshop_config` table so we can compare them.
 
 # COMMAND ----------
 

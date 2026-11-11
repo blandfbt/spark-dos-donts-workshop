@@ -7,7 +7,7 @@
 # MAGIC
 # MAGIC * **Source data (read-only):** the gold and silver tables of the bronze-to-gold lab, prebuilt by the instructor
 # MAGIC   in `dbx_workshop_dev.shared`. Every Genie agent points at these shared tables.
-# MAGIC * **Your objects:** the metric views, the `workshop_config` table (your agent IDs) and the
+# MAGIC * **Your objects:** the metric views, the `genie_workshop_config` table (your agent IDs) and the
 # MAGIC   `genie_benchmark_runs` table go to **your** schema (`USER_SCHEMA` in `CONFIG`).
 # MAGIC * **Plumbing:** Genie REST API helpers (create-or-update an agent, ask a question, build UI links) shared by
 # MAGIC   the notebooks so each one can focus on what it teaches.
@@ -43,17 +43,17 @@ def full_table(name: str) -> str:
 
 
 # Shared lab tables the agents are built on (prebuilt by the instructor)
-GOLD_DAILY_TABLE = source_table("endtoend_gold_daily_dealer_sales_fact")   # one row per order_date x dealer
-GOLD_CATEGORY_TABLE = source_table("endtoend_gold_category_region_fact")  # one row per region x part category
-DEALERS_TABLE = source_table("endtoend_silver_dealers_dim")               # one row per dealer
-PARTS_TABLE = source_table("endtoend_silver_parts_dim")                   # one row per part
+GOLD_DAILY_TABLE = source_table("lab_gold_daily_dealer_sales_fact")   # one row per order_date x dealer
+GOLD_CATEGORY_TABLE = source_table("lab_gold_category_region_fact")  # one row per region x part category
+DEALERS_TABLE = source_table("lab_silver_dealers_dim")               # one row per dealer
+PARTS_TABLE = source_table("lab_silver_parts_dim")                   # one row per part
 GENIE_SOURCE_TABLES = sorted([GOLD_DAILY_TABLE, GOLD_CATEGORY_TABLE, DEALERS_TABLE, PARTS_TABLE])
 
 # Objects you create
-CONFIG_TABLE = full_table("workshop_config")
+CONFIG_TABLE = full_table("genie_workshop_config")
 BENCHMARK_RUNS_TABLE = full_table("genie_benchmark_runs")
-METRIC_VIEW_DEALER_SALES = full_table("mv_dealer_sales")       # built in 03b
-METRIC_VIEW_CATEGORY_SALES = full_table("mv_category_sales")   # built in 03b
+METRIC_VIEW_DEALER_SALES = full_table("genie_mv_dealer_sales")       # built in 03b
+METRIC_VIEW_CATEGORY_SALES = full_table("genie_mv_category_sales")   # built in 03b
 
 # COMMAND ----------
 
@@ -61,11 +61,11 @@ METRIC_VIEW_CATEGORY_SALES = full_table("mv_category_sales")   # built in 03b
 # MAGIC ### Agent variants and the config-save helper
 # MAGIC
 # MAGIC Titles and descriptions for the three agents (Baseline / Metric View / Knowledge Store), plus `save_config_keys`,
-# MAGIC which upserts each agent's id into your `workshop_config` table.
+# MAGIC which upserts each agent's id into your `genie_workshop_config` table.
 
 # COMMAND ----------
 
-# DBTITLE 1,Agent variants and workshop_config keys
+# DBTITLE 1,Agent variants and genie_workshop_config keys
 # The workshop builds three agents on the SAME data to show that curation is what earns trust:
 #   Baseline         (03)  tables only, minimal instructions ... the "before"
 #   Metric View      (03b) built on governed metric views    ... semantic layer
@@ -88,7 +88,7 @@ CFG_KEY_METRIC_VIEW = "genie_space_id_metric_view"
 
 
 def save_config_keys(new_rows):
-    """Upsert rows into your workshop_config table (read-modify-overwrite).
+    """Upsert rows into your genie_workshop_config table (read-modify-overwrite).
 
     Each row is a dict with keys: key, value, space_name, space_url. Lets 03 / 03b / 04 each write their own
     agent id without clobbering the others, and makes re-running any of them safe.
@@ -111,7 +111,7 @@ def save_config_keys(new_rows):
 
 
 def load_config():
-    """{key: agent_id} from your workshop_config table ({} if no agent was created yet)."""
+    """{key: agent_id} from your genie_workshop_config table ({} if no agent was created yet)."""
     try:
         return {r["key"]: r["value"] for r in spark.table(CONFIG_TABLE).collect()}
     except Exception:

@@ -60,10 +60,10 @@
 warehouse_id = pick_warehouse()
 
 # Short names used inside SQL snippets (Genie resolves them against the attached tables)
-DAILY = "endtoend_gold_daily_dealer_sales_fact"
-CATREG = "endtoend_gold_category_region_fact"
-DEALERS = "endtoend_silver_dealers_dim"
-PARTS = "endtoend_silver_parts_dim"
+DAILY = "lab_gold_daily_dealer_sales_fact"
+CATREG = "lab_gold_category_region_fact"
+DEALERS = "lab_silver_dealers_dim"
+PARTS = "lab_silver_parts_dim"
 
 # COMMAND ----------
 
@@ -309,9 +309,9 @@ text_instructions = [{
     "id": new_id(),
     "content": [
         "All sales data covers December 2025 only; if a question asks about another period, say so.\n",
-        "Questions about a part category use endtoend_gold_category_region_fact (no dates or dealers there); "
-        "questions about days, weeks, dealers, tiers or states use endtoend_gold_daily_dealer_sales_fact.\n",
-        "Dealer state is a two-letter code in endtoend_silver_dealers_dim.state (Texas = 'TX').\n",
+        "Questions about a part category use lab_gold_category_region_fact (no dates or dealers there); "
+        "questions about days, weeks, dealers, tiers or states use lab_gold_daily_dealer_sales_fact.\n",
+        "Dealer state is a two-letter code in lab_silver_dealers_dim.state (Texas = 'TX').\n",
         "Percentages and ratios are always SUM / SUM; never average a percentage. Format them to 2 decimals.\n",
     ],
 }]

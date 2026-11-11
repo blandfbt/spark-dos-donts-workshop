@@ -121,7 +121,7 @@ if not globals().get("INSTRUCTOR_SETUP", False):
             f"or ask your instructor to create it (instructor_setup/02_create_participant_schemas)."
         )
     spark.sql(f"CREATE VOLUME IF NOT EXISTS `{CATALOG}`.`{USER_SCHEMA}`.`scratch_files`")
-    # Short table names in SQL cells (endtoend_..., scratch_...) now mean *your* schema.
+    # Short table names in SQL cells (lab_..., sdd_scratch_...) now mean *your* schema.
     spark.sql(f"USE CATALOG `{CATALOG}`")
     spark.sql(f"USE SCHEMA `{USER_SCHEMA}`")
     print(f"📥 source data (read-only): {CATALOG}.{SOURCE_SCHEMA}   raw files: {SOURCE_VOLUME}")

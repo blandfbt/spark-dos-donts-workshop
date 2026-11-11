@@ -17,8 +17,8 @@
 # MAGIC
 # MAGIC | layer | tables in `shared` |
 # MAGIC |---|---|
-# MAGIC | 🥈 silver | `endtoend_silver_orders_fact`, `endtoend_silver_dealers_dim`, `endtoend_silver_parts_dim` (+ bronze and quarantine) |
-# MAGIC | 🥇 gold | `endtoend_gold_daily_dealer_sales_fact`, `endtoend_gold_category_region_fact` |
+# MAGIC | 🥈 silver | `lab_silver_orders_fact`, `lab_silver_dealers_dim`, `lab_silver_parts_dim` (+ bronze and quarantine) |
+# MAGIC | 🥇 gold | `lab_gold_daily_dealer_sales_fact`, `lab_gold_category_region_fact` |
 # MAGIC
 # MAGIC Participants still do the lab themselves; their copies land in their own schemas. Takes about 5 minutes.
 # MAGIC It also publishes the lab's AI/BI dashboard in your home folder (harmless; delete it if you like).
@@ -57,8 +57,8 @@ INSTRUCTOR_SETUP = False  # the lab's own %run ../CONFIG must set up the (shared
 # COMMAND ----------
 
 # DBTITLE 1,Check the tables the Genie notebooks need
-needed = ["endtoend_gold_daily_dealer_sales_fact", "endtoend_gold_category_region_fact",
-          "endtoend_silver_dealers_dim", "endtoend_silver_parts_dim", "endtoend_silver_orders_fact"]
+needed = ["lab_gold_daily_dealer_sales_fact", "lab_gold_category_region_fact",
+          "lab_silver_dealers_dim", "lab_silver_parts_dim", "lab_silver_orders_fact"]
 missing = [t for t in needed if not spark.catalog.tableExists(f"{CATALOG}.{SOURCE_SCHEMA}.{t}")]
 assert not missing, f"Missing in {CATALOG}.{SOURCE_SCHEMA}: {missing}"
 for t in needed:

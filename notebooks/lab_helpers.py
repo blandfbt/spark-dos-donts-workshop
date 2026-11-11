@@ -22,16 +22,16 @@ dbutils.widgets.text("warehouse_id", "", "SQL warehouse ID (dashboard)")
 AUTO_SOLVE = _job_param("auto_solve", "false") == "true"  # _job_param (CONFIG) also sees the prebuild overrides
 
 LAB_RAW = f"{SOURCE_VOLUME}/lab"                        # raw files, shared and read-only
-LAB_CHECKPOINTS = f"{USER_VOLUME}/_checkpoints/endtoend"  # Auto Loader state, in your own volume
+LAB_CHECKPOINTS = f"{USER_VOLUME}/_checkpoints/lab"  # Auto Loader state, in your own volume
 LAB_DASHBOARD_NAME = f"Apex Motorsports Parts - December sales ({USER_SCHEMA})"
 
 
 def reset_lab():
-    """Drop every endtoend_* table and the lab's Auto Loader checkpoints. The raw files are kept."""
-    for t in spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{USER_SCHEMA}` LIKE 'endtoend_*'").collect():
+    """Drop every lab_* table and the lab's Auto Loader checkpoints. The raw files are kept."""
+    for t in spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{USER_SCHEMA}` LIKE 'lab_*'").collect():
         spark.sql(f"DROP TABLE IF EXISTS {T(t.tableName)}")
     dbutils.fs.rm(LAB_CHECKPOINTS, True)
-    print("Lab reset: endtoend_* tables dropped, checkpoints cleared.")
+    print("Lab reset: lab_* tables dropped, checkpoints cleared.")
 
 
 # COMMAND ----------
@@ -49,14 +49,14 @@ dealers_raw = (
             F.col("_metadata.file_path").alias("_source_file"),
             F.current_timestamp().alias("_ingested_at"))
 )
-dealers_raw.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable("endtoend_bronze_dealers_dim")
-spark.sql("COMMENT ON TABLE endtoend_bronze_dealers_dim IS 'Dealer list exactly as delivered (CSV), with lineage columns'")
+dealers_raw.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable("lab_bronze_dealers_dim")
+spark.sql("COMMENT ON TABLE lab_bronze_dealers_dim IS 'Dealer list exactly as delivered (CSV), with lineage columns'")
 ''',
     },
     "silver_dealers": {
         "lang": "sql",
         "code": '''
-CREATE OR REPLACE TABLE endtoend_silver_dealers_dim
+CREATE OR REPLACE TABLE lab_silver_dealers_dim
 COMMENT 'Dealer reference: one row per dealer, latest version, cleaned text'
 AS
 SELECT
@@ -66,24 +66,24 @@ SELECT
   upper(trim(state))                                                  AS state,
   dealer_tier,
   to_timestamp(updated_at)                                            AS updated_at
-FROM endtoend_bronze_dealers_dim
+FROM lab_bronze_dealers_dim
 QUALIFY row_number() OVER (PARTITION BY dealer_id ORDER BY to_timestamp(updated_at) DESC) = 1
 ''',
     },
     "silver_parts": {
         "lang": "sql",
         "code": '''
-CREATE OR REPLACE TABLE endtoend_silver_parts_dim
+CREATE OR REPLACE TABLE lab_silver_parts_dim
 COMMENT 'Parts reference for the end-to-end lab: one row per part, only the columns gold needs'
 AS
 SELECT part_id, part_name, category, list_price, unit_cost
-FROM shared.dim_part
+FROM shared.sdd_dim_part
 ''',
     },
     "gold_category_region": {
         "lang": "sql",
         "code": '''
-CREATE OR REPLACE TABLE endtoend_gold_category_region_fact
+CREATE OR REPLACE TABLE lab_gold_category_region_fact
 COMMENT 'December 2025 orders, units, net revenue and margin by region and part category'
 AS
 SELECT
@@ -94,9 +94,9 @@ SELECT
   round(sum(o.net_revenue), 2)                                    AS net_revenue,
   round(sum(o.net_revenue - o.quantity * p.unit_cost), 2)         AS margin,
   round(100 * sum(o.net_revenue - o.quantity * p.unit_cost) / sum(o.net_revenue), 2) AS margin_pct
-FROM endtoend_silver_orders_fact o
-JOIN endtoend_silver_dealers_dim d ON o.dealer_id = d.dealer_id
-JOIN endtoend_silver_parts_dim p ON o.part_id = p.part_id
+FROM lab_silver_orders_fact o
+JOIN lab_silver_dealers_dim d ON o.dealer_id = d.dealer_id
+JOIN lab_silver_parts_dim p ON o.part_id = p.part_id
 GROUP BY d.region, p.category
 ''',
     },
@@ -108,7 +108,7 @@ SELECT region, dealer_name, net_revenue, revenue_rank
 FROM (
   SELECT region, dealer_name, sum(net_revenue) AS net_revenue,
          rank() OVER (PARTITION BY region ORDER BY sum(net_revenue) DESC) AS revenue_rank
-  FROM endtoend_gold_daily_dealer_sales_fact
+  FROM lab_gold_daily_dealer_sales_fact
   GROUP BY region, dealer_name
 )
 WHERE revenue_rank <= 3
@@ -121,7 +121,7 @@ CREATE OR REPLACE TEMP VIEW answer_online_share AS
 SELECT
   to_date(order_ts) AS order_date,
   round(100 * sum(CASE WHEN channel = 'Online' THEN net_revenue END) / sum(net_revenue), 2) AS online_share_pct
-FROM endtoend_silver_orders_fact
+FROM lab_silver_orders_fact
 GROUP BY to_date(order_ts)
 ORDER BY online_share_pct DESC
 LIMIT 5
@@ -131,7 +131,7 @@ LIMIT 5
         "lang": "python",
         "code": '''
 my_datasets = [dataset("categories", "Margin by category",
-                       "SELECT region, category, margin_pct FROM endtoend_gold_category_region_fact")]
+                       "SELECT region, category, margin_pct FROM lab_gold_category_region_fact")]
 my_widgets = [bar("b_categories", "categories", "category", "margin_pct", "Margin % by category and region",
                   x=0, y=17, w=6, color="region")]
 publish_dashboard(datasets + my_datasets, widgets + my_widgets)
@@ -182,9 +182,9 @@ def _same_rows(actual, expected, keys, numeric=(), tol=0.05):
 
 
 def _check_bronze_dealers():
-    if not _exists("endtoend_bronze_dealers_dim"):
-        return False, "Table endtoend_bronze_dealers_dim doesn't exist yet."
-    df = spark.table("endtoend_bronze_dealers_dim")
+    if not _exists("lab_bronze_dealers_dim"):
+        return False, "Table lab_bronze_dealers_dim doesn't exist yet."
+    df = spark.table("lab_bronze_dealers_dim")
     missing = {"dealer_id", "dealer_name", "region", "updated_at", "_source_file", "_ingested_at"} - set(df.columns)
     if missing:
         return False, f"Missing columns: {sorted(missing)}"
@@ -195,9 +195,9 @@ def _check_bronze_dealers():
 
 
 def _check_silver_dealers():
-    if not _exists("endtoend_silver_dealers_dim"):
-        return False, "Table endtoend_silver_dealers_dim doesn't exist yet."
-    df = spark.table("endtoend_silver_dealers_dim")
+    if not _exists("lab_silver_dealers_dim"):
+        return False, "Table lab_silver_dealers_dim doesn't exist yet."
+    df = spark.table("lab_silver_dealers_dim")
     n, distinct = df.count(), df.select("dealer_id").distinct().count()
     if n != distinct:
         return False, f"{n} rows but {distinct} dealers: keep one row per dealer_id (the latest updated_at)."
@@ -207,7 +207,7 @@ def _check_silver_dealers():
         return False, f"Regions still need cleaning: {bad_regions[:5]}"
     if df.where("dealer_name IS NULL OR trim(dealer_name) = ''").count():
         return False, "Some dealer names are blank: fill them in (e.g. 'Unknown dealer <id>')."
-    stale = df.join(spark.table(SRC("dim_dealer")).select("dealer_id", F.col("dealer_tier").alias("t")), "dealer_id") \
+    stale = df.join(spark.table(SRC("sdd_dim_dealer")).select("dealer_id", F.col("dealer_tier").alias("t")), "dealer_id") \
               .where("dealer_tier <> t").count()
     if stale:
         return False, f"{stale} dealers kept a stale version: order by updated_at and keep the latest."
@@ -215,9 +215,9 @@ def _check_silver_dealers():
 
 
 def _check_gold_category_region():
-    if not _exists("endtoend_gold_category_region_fact"):
-        return False, "Table endtoend_gold_category_region_fact doesn't exist yet."
-    actual = spark.table("endtoend_gold_category_region_fact")
+    if not _exists("lab_gold_category_region_fact"):
+        return False, "Table lab_gold_category_region_fact doesn't exist yet."
+    actual = spark.table("lab_gold_category_region_fact")
     expected = spark.sql(_select_of("gold_category_region"))
     missing = set(expected.columns) - set(actual.columns)
     if missing:
@@ -254,8 +254,8 @@ def _check_dashboard():
 
 
 CHECKS = {
-    "silver_parts": lambda: ((True, "parts dimension exists") if _exists("endtoend_silver_parts_dim")
-                             else (False, "Table endtoend_silver_parts_dim doesn't exist yet: run the parts example in 2d.")),
+    "silver_parts": lambda: ((True, "parts dimension exists") if _exists("lab_silver_parts_dim")
+                             else (False, "Table lab_silver_parts_dim doesn't exist yet: run the parts example in 2d.")),
     "dashboard": _check_dashboard,
     "bronze_dealers": _check_bronze_dealers,
     "silver_dealers": _check_silver_dealers,

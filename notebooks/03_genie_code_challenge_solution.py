@@ -17,7 +17,7 @@
 # MAGIC | 1 | `collect()` the dealers and `for d in region_dealers:` | one query per dealer, run one after another (section 3) | one join + `groupBy` over all dealers |
 # MAGIC | 2 | `date_format(order_date, 'yyyy-MM') == month` | a function around the column hides it from file statistics, so Delta can't skip files that are outside the month | `order_date >= start AND order_date < start + 1 month` |
 # MAGIC | 3 | `if dealer_orders.count() == 0: continue` | one more full action per dealer (2b) | the inner join simply produces no row for dealers without orders |
-# MAGIC | 4 | `toPandas()` per dealer, `merge` with a pandas copy of `dim_part` | ships every order line to the driver (1a/1b) | Spark join; the small dimension is broadcast automatically |
+# MAGIC | 4 | `toPandas()` per dealer, `merge` with a pandas copy of `sdd_dim_part` | ships every order line to the driver (1a/1b) | Spark join; the small dimension is broadcast automatically |
 # MAGIC | 5 | `pdf.apply(lambda r: ..., axis=1)` | row-at-a-time Python, the pandas version of a Python UDF (4) | column expressions |
 # MAGIC | 6 | `groupby(...).idxmax()` per dealer in pandas | driver-side work per key | `max_by(category, revenue)` in one aggregation |
 # MAGIC | 7 | `withColumn` in a loop | plan bloat (5a); harmless for 2 columns, a habit that hurts at 300 | one `select` |
@@ -42,18 +42,18 @@
 # COMMAND ----------
 
 # DBTITLE 1,✅ Optimized scorecard job
-def build_dealer_scorecard_fast(region="Midwest", month="2025-12", target_table=T("dealer_scorecard_fast")):
+def build_dealer_scorecard_fast(region="Midwest", month="2025-12", target_table=T("sdd_dealer_scorecard_fast")):
     """Scorecard per dealer in `region` for `month` (YYYY-MM): orders, customers, net revenue, margin,
     margin %, top category and revenue rank. Overwrites target_table."""
     month_start = F.to_date(F.lit(f"{month}-01"))
 
     lines = (
-        spark.table(SRC("fact_orders"))
+        spark.table(SRC("sdd_fact_orders"))
         # (2) range on the raw clustering column -> data skipping reads ~1 month of files
         .where((F.col("order_date") >= month_start) & (F.col("order_date") < F.add_months(month_start, 1)))
         # (1)(3)(4) joins instead of a driver loop; dealers without orders drop out of the inner join
-        .join(spark.table(SRC("dim_dealer")).where(F.col("region") == region).select("dealer_id", "dealer_name"), "dealer_id")
-        .join(spark.table(SRC("dim_part")).select("part_id", "category", "unit_cost"), "part_id")
+        .join(spark.table(SRC("sdd_dim_dealer")).where(F.col("region") == region).select("dealer_id", "dealer_name"), "dealer_id")
+        .join(spark.table(SRC("sdd_dim_part")).select("part_id", "category", "unit_cost"), "part_id")
         # (5) column expressions instead of pandas apply
         .withColumn("net_revenue", F.col("quantity") * F.col("unit_price") * (1 - F.col("discount_pct")))
         .withColumn("margin", F.col("net_revenue") - F.col("quantity") * F.col("unit_cost"))
@@ -94,12 +94,12 @@ def build_dealer_scorecard_fast(region="Midwest", month="2025-12", target_table=
 
 # DBTITLE 1,⏱️ Time it and check the result
 run_timed("11 · Genie Code challenge: dealer scorecard", "Do", build_dealer_scorecard_fast)
-check_dealer_scorecard(T("dealer_scorecard_fast"))
+check_dealer_scorecard(T("sdd_dealer_scorecard_fast"))
 
 # COMMAND ----------
 
 # DBTITLE 1,Scorecard
-display(spark.table(T("dealer_scorecard_fast")).orderBy("revenue_rank"))
+display(spark.table(T("sdd_dealer_scorecard_fast")).orderBy("revenue_rank"))
 
 # COMMAND ----------
 
@@ -116,9 +116,9 @@ WITH lines AS (
   SELECT o.dealer_id, d.dealer_name, o.customer_id, p.category,
          o.quantity * o.unit_price * (1 - o.discount_pct)                              AS net_revenue,
          o.quantity * o.unit_price * (1 - o.discount_pct) - o.quantity * p.unit_cost  AS margin
-  FROM {SRC('fact_orders')} o
-  JOIN {SRC('dim_dealer')} d ON o.dealer_id = d.dealer_id AND d.region = 'Midwest'
-  JOIN {SRC('dim_part')}   p ON o.part_id   = p.part_id
+  FROM {SRC('sdd_fact_orders')} o
+  JOIN {SRC('sdd_dim_dealer')} d ON o.dealer_id = d.dealer_id AND d.region = 'Midwest'
+  JOIN {SRC('sdd_dim_part')}   p ON o.part_id   = p.part_id
   WHERE o.order_date >= DATE'2025-12-01' AND o.order_date < DATE'2026-01-01'
 ),
 top_category AS (

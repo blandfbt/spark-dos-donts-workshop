@@ -29,13 +29,13 @@
 # MAGIC %md
 # MAGIC ## Connect to the workspace
 # MAGIC
-# MAGIC Read your Knowledge Store agent id from `workshop_config` and build its clickable Genie link.
+# MAGIC Read your Knowledge Store agent id from `genie_workshop_config` and build its clickable Genie link.
 
 # COMMAND ----------
 
 PRIMARY_SPACE_ID = load_config().get(CFG_KEY_CURATED, "")
 if not PRIMARY_SPACE_ID:
-    raise RuntimeError("genie_space_id not found in workshop_config. Run notebook 04 first.")
+    raise RuntimeError("genie_space_id not found in genie_workshop_config. Run notebook 04 first.")
 print(f"Knowledge Store agent: {genie_ui_room_url(PRIMARY_SPACE_ID)}")
 
 D, C, DL, P = GOLD_DAILY_TABLE, GOLD_CATEGORY_TABLE, DEALERS_TABLE, PARTS_TABLE

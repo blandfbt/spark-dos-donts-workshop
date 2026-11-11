@@ -20,11 +20,11 @@
 # MAGIC
 # MAGIC | object | shape | used to show |
 # MAGIC |---|---|---|
-# MAGIC | `fact_orders` | star-schema fact, ~100M rows, liquid clustered by `order_date` | collect/toPandas, repeated actions, driver loops, UDFs, windows, writes |
-# MAGIC | `dim_customer`, `dim_dealer`, `dim_part`, `dim_date` | star-schema dimensions | joins, broadcast |
-# MAGIC | `dim_customer_history` | SCD type 2, 1–3 versions per customer | the duplicate-key join explosion |
-# MAGIC | `telemetry_wide` | 1M rows × ~300 sensor columns | column pruning, `withColumn` loops |
-# MAGIC | `telemetry_readings` + `track_sessions` | 1 Hz car telemetry + session start/end windows | range (non-equi) joins |
+# MAGIC | `sdd_fact_orders` | star-schema fact, ~100M rows, liquid clustered by `order_date` | collect/toPandas, repeated actions, driver loops, UDFs, windows, writes |
+# MAGIC | `sdd_dim_customer`, `sdd_dim_dealer`, `sdd_dim_part`, `sdd_dim_date` | star-schema dimensions | joins, broadcast |
+# MAGIC | `sdd_dim_customer_history` | SCD type 2, 1–3 versions per customer | the duplicate-key join explosion |
+# MAGIC | `sdd_telemetry_wide` | 1M rows × ~300 sensor columns | column pruning, `withColumn` loops |
+# MAGIC | `sdd_telemetry_readings` + `sdd_track_sessions` | 1 Hz car telemetry + session start/end windows | range (non-equi) joins |
 # MAGIC | volume `raw_files/orders_csv` | CSV, one quarter of orders | `inferSchema` vs. an explicit schema |
 # MAGIC | volume `raw_files/telemetry_small_files` vs `telemetry_compacted` | the same rows as 4,000 tiny vs 4 large Parquet files | the small-files problem |
 # MAGIC | volume `raw_files/daily_order_extracts` | one Parquet folder per day | union-in-a-loop vs. one read |
@@ -88,7 +88,7 @@ def pick(values, rnd):
     return F.element_at(F.array(*[F.lit(v) for v in values]), (F.floor(rnd * len(values)) + 1).cast("int"))
 
 
-print(f"Writing to {CATALOG}.{SCHEMA}; fact_orders rows: {FACT_ROWS:,}")
+print(f"Writing to {CATALOG}.{SCHEMA}; sdd_fact_orders rows: {FACT_ROWS:,}")
 
 # COMMAND ----------
 
@@ -97,8 +97,8 @@ print(f"Writing to {CATALOG}.{SCHEMA}; fact_orders rows: {FACT_ROWS:,}")
 
 # COMMAND ----------
 
-# DBTITLE 1,Write dim_date, dim_dealer, dim_part
-dim_date = (
+# DBTITLE 1,Write sdd_dim_date, sdd_dim_dealer, sdd_dim_part
+sdd_dim_date = (
     spark.sql("SELECT explode(sequence(DATE'2024-01-01', DATE'2025-12-31')) AS order_date")
     .select(
         F.date_format("order_date", "yyyyMMdd").cast("int").alias("date_key"),
@@ -111,11 +111,11 @@ dim_date = (
         F.dayofweek("order_date").isin(1, 7).alias("is_weekend"),
     )
 )
-save(dim_date, "dim_date")
+save(sdd_dim_date, "sdd_dim_date")
 
 REGIONS = ["Northeast", "Southeast", "Midwest", "Southwest", "West", "Northwest"]
 STATES = ["MI", "OH", "IN", "TX", "CA", "FL", "NC", "GA", "AZ", "WA", "OR", "NY", "PA", "IL", "TN"]
-dim_dealer = spark.range(1, N_DEALERS + 1).select(
+sdd_dim_dealer = spark.range(1, N_DEALERS + 1).select(
     F.col("id").cast("int").alias("dealer_id"),
     F.format_string("Apex Dealer %03d", "id").alias("dealer_name"),
     pick(REGIONS, F.rand(11)).alias("region"),
@@ -123,10 +123,10 @@ dim_dealer = spark.range(1, N_DEALERS + 1).select(
     F.when(F.col("id") % 10 == 0, "Platinum").when(F.col("id") % 4 == 0, "Gold").otherwise("Standard").alias("dealer_tier"),
     F.date_add(F.lit("2010-01-01").cast("date"), (F.rand(13) * 5000).cast("int")).alias("opened_date"),
 )
-save(dim_dealer, "dim_dealer")
+save(sdd_dim_dealer, "sdd_dim_dealer")
 
 CATEGORIES = ["Brakes", "Engine", "Tires", "Suspension", "Electrical", "Aero", "Body", "Fluids", "Exhaust", "Drivetrain"]
-dim_part = (
+sdd_dim_part = (
     spark.range(1, N_PARTS + 1)
     .select(
         F.col("id").cast("int").alias("part_id"),
@@ -142,7 +142,7 @@ dim_part = (
         F.round(F.col("list_price") * (0.45 + F.col("_cost_ratio") * 0.3), 2).alias("unit_cost"),
     )
 )
-save(dim_part, "dim_part")
+save(sdd_dim_part, "sdd_dim_part")
 
 # COMMAND ----------
 
@@ -155,7 +155,7 @@ save(dim_part, "dim_part")
 
 # COMMAND ----------
 
-# DBTITLE 1,Write dim_customer_history and dim_customer
+# DBTITLE 1,Write sdd_dim_customer_history and sdd_dim_customer
 SEGMENTS = ["Club racer", "Pro team", "Weekend enthusiast", "Fleet", "Restoration shop"]
 customer_history = (
     spark.range(1, N_CUSTOMERS + 1, 1, 64)
@@ -175,11 +175,11 @@ customer_history = (
         (F.col("version") == F.col("versions")).alias("is_current"),
     )
 )
-save(customer_history, "dim_customer_history")
+save(customer_history, "sdd_dim_customer_history")
 
 save(
-    spark.table(T("dim_customer_history")).where("is_current").drop("version", "valid_from", "valid_to", "is_current"),
-    "dim_customer",
+    spark.table(T("sdd_dim_customer_history")).where("is_current").drop("version", "valid_from", "valid_to", "is_current"),
+    "sdd_dim_customer",
 )
 
 # COMMAND ----------
@@ -193,10 +193,10 @@ save(
 
 # COMMAND ----------
 
-# DBTITLE 1,Write fact_orders
+# DBTITLE 1,Write sdd_fact_orders
 fact_partitions = max(16, FACT_ROWS // 2_000_000)
-parts = spark.table(T("dim_part")).select("part_id", "list_price")
-fact_orders = (
+parts = spark.table(T("sdd_dim_part")).select("part_id", "list_price")
+sdd_fact_orders = (
     spark.range(0, FACT_ROWS, 1, fact_partitions)
     .select(
         (F.col("id") + 1).alias("order_id"),
@@ -231,7 +231,7 @@ fact_orders = (
         "promo_code",
     )
 )
-save(fact_orders, "fact_orders", cluster_by=["order_date"])
+save(sdd_fact_orders, "sdd_fact_orders", cluster_by=["order_date"])
 
 # COMMAND ----------
 
@@ -239,12 +239,12 @@ save(fact_orders, "fact_orders", cluster_by=["order_date"])
 # MAGIC ## Telemetry readings and sessions
 # MAGIC
 # MAGIC 20 cars run six sessions a day between 08:00 and 18:00. The readings arrive at 1 Hz for the whole
-# MAGIC day; `track_sessions` holds the start and end of each session. To label each reading with its
+# MAGIC day; `sdd_track_sessions` holds the start and end of each session. To label each reading with its
 # MAGIC session you need a **range join** (`ts BETWEEN start_ts AND end_ts`).
 
 # COMMAND ----------
 
-# DBTITLE 1,Write telemetry_readings and track_sessions
+# DBTITLE 1,Write sdd_telemetry_readings and sdd_track_sessions
 SESSION_NAMES = ["FP1", "FP2", "FP3", "Qualifying", "Sprint", "Race"]
 day_seconds = 10 * 3600
 readings = (
@@ -267,7 +267,7 @@ readings = (
         F.round(95 + 10 * F.sin(F.col("t") / 900.0) + F.rand(63), 1).alias("oil_temp_c"),
     )
 )
-save(readings, "telemetry_readings")
+save(readings, "sdd_telemetry_readings")
 
 sessions = (
     spark.range(0, N_CARS * TELEMETRY_DAYS * SESSIONS_PER_DAY)
@@ -293,7 +293,7 @@ sessions = (
         F.timestamp_seconds(F.unix_timestamp("start_ts") + 50 * 60 + F.floor(F.rand(72) * 20 * 60)).alias("end_ts"),
     )
 )
-save(sessions, "track_sessions")
+save(sessions, "sdd_track_sessions")
 
 # COMMAND ----------
 
@@ -302,7 +302,7 @@ save(sessions, "track_sessions")
 
 # COMMAND ----------
 
-# DBTITLE 1,Write telemetry_wide
+# DBTITLE 1,Write sdd_telemetry_wide
 sensor_cols = [f"{g}_{i:03d}" for g in WIDE_SENSOR_GROUPS for i in range(1, WIDE_SENSORS_PER_GROUP + 1)]
 sensor_exprs = [
     F.round(
@@ -313,13 +313,13 @@ sensor_exprs = [
     ).alias(c)
     for n, c in enumerate(sensor_cols)
 ]
-telemetry_wide = spark.range(0, WIDE_ROWS, 1, 32).select(
+sdd_telemetry_wide = spark.range(0, WIDE_ROWS, 1, 32).select(
     F.format_string("APX-%02d", (F.col("id") % N_CARS + 1).cast("int")).alias("car_id"),
     F.timestamp_seconds(F.unix_timestamp(F.lit("2025-03-01 08:00:00")) + (F.col("id") / N_CARS).cast("long")).alias("ts"),
     ((F.col("id") / N_CARS / 90).cast("int") + 1).alias("lap"),
     *sensor_exprs,
 )
-save(telemetry_wide, "telemetry_wide")
+save(sdd_telemetry_wide, "sdd_telemetry_wide")
 
 # COMMAND ----------
 
@@ -334,7 +334,7 @@ def replace_folder(path):
     return path
 
 
-orders = spark.table(T("fact_orders"))
+orders = spark.table(T("sdd_fact_orders"))
 q1_2025 = orders.where("order_date BETWEEN '2025-01-01' AND '2025-03-31'")
 
 # CSV: what a partner system might drop for you (strings everywhere until you give it a schema)
@@ -348,7 +348,7 @@ q1_2025.drop("date_key").coalesce(16).write.option("header", True).csv(replace_f
 )
 
 # The same three days of telemetry as 4,000 tiny files and as 4 well-sized files
-three_days = spark.table(T("telemetry_readings")).where("ts < '2025-03-04'")
+three_days = spark.table(T("sdd_telemetry_readings")).where("ts < '2025-03-04'")
 three_days.repartition(4000).write.parquet(replace_folder(f"{VOLUME}/telemetry_small_files"))
 three_days.repartition(4).write.parquet(replace_folder(f"{VOLUME}/telemetry_compacted"))
 
@@ -376,7 +376,7 @@ for folder in ["orders_csv", "daily_order_extracts", "telemetry_small_files", "t
 
 # DBTITLE 1,Land the lab's messy raw files
 lab_root = f"{VOLUME}/lab"
-december = spark.table(T("fact_orders")).where("order_date >= '2025-12-01'")
+december = spark.table(T("sdd_fact_orders")).where("order_date >= '2025-12-01'")
 
 lab_orders = (
     december.withColumn("_r", F.rand(81))
@@ -414,7 +414,7 @@ resent = (
     .write.json(replace_folder(f"{lab_root}/orders_json"))
 )
 
-dealer_rows = spark.table(T("dim_dealer"))
+dealer_rows = spark.table(T("sdd_dim_dealer"))
 current = dealer_rows.select(
     F.col("dealer_id").cast("string").alias("dealer_id"),
     F.when(F.rand(91) < 0.02, F.lit("")).otherwise(F.col("dealer_name")).alias("dealer_name"),
@@ -433,7 +433,7 @@ stale = (
 current.unionByName(stale).orderBy(F.rand(95)).coalesce(1).write.option("header", True).csv(
     replace_folder(f"{lab_root}/dealers_csv")
 )
-dbutils.fs.rm(f"{VOLUME}/_checkpoints/endtoend", True)
+dbutils.fs.rm(f"{VOLUME}/_checkpoints/lab", True)
 print(f"lab orders: {lab_orders.count():,} + {resent.count():,} re-sent · dealers file written")
 
 # COMMAND ----------

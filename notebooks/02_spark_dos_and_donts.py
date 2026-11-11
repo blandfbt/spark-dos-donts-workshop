@@ -33,7 +33,7 @@
 # MAGIC * Each section starts with a **▶️ resume point** (`%run ../CONFIG` + `%run ./workshop_helpers`) that restores
 # MAGIC   everything the section needs, so after a restart or detach you can carry on from any section.
 # MAGIC * The source data is **read-only** in `dbx_workshop_dev.shared`. Every table and file this notebook writes
-# MAGIC   (`scratch_*`, the challenge scorecards, the Auto Loader landing zone and checkpoint) goes to **your**
+# MAGIC   (`sdd_scratch_*`, the challenge scorecards, the Auto Loader landing zone and checkpoint) goes to **your**
 # MAGIC   schema and its `scratch_files` volume.
 # MAGIC
 # MAGIC **Before you start**
@@ -76,9 +76,9 @@
 # DBTITLE 1,Data overview
 # workshop_helpers defined the shared DataFrames: orders, parts, dealers, customers, customer_history, wide,
 # readings, sessions, plus the net_revenue expression and sample_orders(fraction)
-print(f"fact_orders        {orders.count():>13,} rows")  # answered from Delta metadata - no scan
-print(f"telemetry_wide     {wide.count():>13,} rows x {len(wide.columns)} columns")
-print(f"telemetry_readings {readings.count():>13,} rows")
+print(f"sdd_fact_orders        {orders.count():>13,} rows")  # answered from Delta metadata - no scan
+print(f"sdd_telemetry_wide     {wide.count():>13,} rows x {len(wide.columns)} columns")
+print(f"sdd_telemetry_readings {readings.count():>13,} rows")
 display(orders.limit(5))
 
 # COMMAND ----------
@@ -117,7 +117,7 @@ display(orders.limit(5))
 # MAGIC
 # MAGIC **Rule:** reduce in Spark first (filter, aggregate, `limit`), then bring back only the small result.
 # MAGIC
-# MAGIC To keep the notebook alive, the Don't collects only **4% of `fact_orders`**, and the cell projects
+# MAGIC To keep the notebook alive, the Don't collects only **4% of `sdd_fact_orders`**, and the cell projects
 # MAGIC what the whole table would need. The Do aggregates the **whole** table.
 # MAGIC
 # MAGIC 📚 **References:** [Spark: `collect()` on the driver can run out of memory](https://spark.apache.org/docs/latest/rdd-programming-guide.html#printing-elements-of-an-rdd) · [PySpark `DataFrame.collect`](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.DataFrame.collect.html) · [Spark Connect vs. classic Spark](https://docs.databricks.com/aws/en/spark/connect-vs-classic)
@@ -307,7 +307,7 @@ def pipeline_with_debug_actions():
     display_now(enriched.where("discount_pct >= 0.3").orderBy(F.desc("net_revenue")))  # action 2: join + sort
     print("monthly rows:", monthly.count())  # action 3: join + aggregation
     display_now(monthly.orderBy(F.desc("net_revenue")))  # action 4: join + aggregation + sort
-    monthly.write.mode("overwrite").saveAsTable(T("scratch_monthly_dealer_revenue"))  # action 5: ...again
+    monthly.write.mode("overwrite").saveAsTable(T("sdd_scratch_monthly_dealer_revenue"))  # action 5: ...again
 
 
 run_timed("2a · count()/display() after every pipeline step", "Don't", pipeline_with_debug_actions)
@@ -318,11 +318,11 @@ run_timed("2a · count()/display() after every pipeline step", "Don't", pipeline
 # ✅ DO: one action (the write), then read cheap facts about the result
 def pipeline_single_action():
     _, monthly = build_monthly_dealer_revenue()
-    monthly.write.mode("overwrite").saveAsTable(T("scratch_monthly_dealer_revenue"))
+    monthly.write.mode("overwrite").saveAsTable(T("sdd_scratch_monthly_dealer_revenue"))
 
-    last_write = spark.sql(f"DESCRIBE HISTORY {T('scratch_monthly_dealer_revenue')} LIMIT 1").first()
+    last_write = spark.sql(f"DESCRIBE HISTORY {T('sdd_scratch_monthly_dealer_revenue')} LIMIT 1").first()
     rows_written = last_write.operationMetrics["numOutputRows"]  # free: recorded by the write itself
-    display_now(spark.table(T("scratch_monthly_dealer_revenue")).orderBy(F.desc("net_revenue")).limit(10))
+    display_now(spark.table(T("sdd_scratch_monthly_dealer_revenue")).orderBy(F.desc("net_revenue")).limit(10))
     return {"note": f"{rows_written} rows written (from DESCRIBE HISTORY, no extra scan)"}
 
 
@@ -465,7 +465,7 @@ run_timed("3a · one query per dealer in a Python loop", "Do", revenue_per_deale
 
 # DBTITLE 1,🚫 Don't: one INSERT per row
 spark.sql(f"""
-  CREATE OR REPLACE TABLE {T('scratch_order_adjustments')} (
+  CREATE OR REPLACE TABLE {T('sdd_scratch_order_adjustments')} (
     order_id BIGINT, adjustment DOUBLE, reason STRING, created_at TIMESTAMP)
 """)
 adjustments = [
@@ -479,12 +479,12 @@ row_by_row = adjustments[:30]
 # 🚫 DON'T: one INSERT statement (one Delta transaction) per row (the first 30 of 300 rows)
 def insert_row_by_row():
     for order_id, amount, reason in row_by_row:
-        spark.sql(f"INSERT INTO {T('scratch_order_adjustments')} VALUES ({order_id}, {amount}, '{reason}', current_timestamp())")
+        spark.sql(f"INSERT INTO {T('sdd_scratch_order_adjustments')} VALUES ({order_id}, {amount}, '{reason}', current_timestamp())")
         insert_progress["done"] += 1
 
 
 def insert_detail(seconds):
-    versions = spark.sql(f"DESCRIBE HISTORY {T('scratch_order_adjustments')}").count()
+    versions = spark.sql(f"DESCRIBE HISTORY {T('sdd_scratch_order_adjustments')}").count()
     return f"{insert_progress['done']} rows inserted · table now has {versions} versions"
 
 
@@ -499,7 +499,7 @@ def insert_as_one_batch():
     batch = spark.createDataFrame(adjustments, "order_id BIGINT, adjustment DOUBLE, reason STRING").withColumn(
         "created_at", F.current_timestamp()
     )
-    batch.write.mode("append").saveAsTable(T("scratch_order_adjustments"))
+    batch.write.mode("append").saveAsTable(T("sdd_scratch_order_adjustments"))
     return {"note": f"{len(adjustments)} rows in 1 transaction"}
 
 
@@ -864,7 +864,7 @@ run_timed("6b · reading 4,000 tiny files", "Do", lambda: summarize_telemetry(f"
 # The landing zone and checkpoint live in YOUR scratch_files volume (the shared source volume is read-only).
 # The first time, seed it with July-December 2025 from the instructor's order export (~25M rows, under a minute).
 landing = f"{USER_VOLUME}/orders_landing"
-checkpoint = f"{USER_VOLUME}/_checkpoints/scratch_orders_bronze_incremental"
+checkpoint = f"{USER_VOLUME}/_checkpoints/sdd_scratch_orders_bronze_incremental"
 try:
     seeded = any(f.name.endswith(".parquet") for f in dbutils.fs.ls(landing))
 except Exception:  # folder doesn't exist yet
@@ -877,7 +877,7 @@ landing_schema = spark.read.parquet(landing).schema
 
 
 def full_reload():
-    spark.read.parquet(landing).write.mode("overwrite").saveAsTable(T("scratch_orders_bronze_full"))
+    spark.read.parquet(landing).write.mode("overwrite").saveAsTable(T("sdd_scratch_orders_bronze_full"))
 
 
 def incremental_autoloader():
@@ -888,7 +888,7 @@ def incremental_autoloader():
         .load(landing)
         .writeStream.option("checkpointLocation", checkpoint)
         .trigger(availableNow=True)
-        .toTable(T("scratch_orders_bronze_incremental"))
+        .toTable(T("sdd_scratch_orders_bronze_incremental"))
     )
     query.awaitTermination()
 
@@ -898,7 +898,7 @@ for f in dbutils.fs.ls(landing):
     if f.name.startswith("new_arrival"):
         dbutils.fs.rm(f.path, True)
 dbutils.fs.rm(checkpoint, True)
-spark.sql(f"DROP TABLE IF EXISTS {T('scratch_orders_bronze_incremental')}")
+spark.sql(f"DROP TABLE IF EXISTS {T('sdd_scratch_orders_bronze_incremental')}")
 t0 = time.perf_counter()
 full_reload()
 incremental_autoloader()
@@ -918,7 +918,7 @@ print("One new file landed:", [f.name for f in dbutils.fs.ls(f"{landing}/new_arr
 # 🚫 DON'T: re-read and overwrite everything to pick up one file
 def full_reload_run():
     full_reload()
-    return {"note": f"bronze now {spark.table(T('scratch_orders_bronze_full')).count():,} rows (all re-written)"}
+    return {"note": f"bronze now {spark.table(T('sdd_scratch_orders_bronze_full')).count():,} rows (all re-written)"}
 
 
 run_timed("6c · full re-read of the landing zone every run", "Don't", full_reload_run)
@@ -928,9 +928,9 @@ run_timed("6c · full re-read of the landing zone every run", "Don't", full_relo
 # DBTITLE 1,✅ Do: Auto Loader
 # ✅ DO: Auto Loader picks up only the new file
 def incremental_run():
-    before = spark.table(T("scratch_orders_bronze_incremental")).count()
+    before = spark.table(T("sdd_scratch_orders_bronze_incremental")).count()
     incremental_autoloader()
-    after = spark.table(T("scratch_orders_bronze_incremental")).count()
+    after = spark.table(T("sdd_scratch_orders_bronze_incremental")).count()
     return {"note": f"{after - before:,} new rows ingested · bronze now {after:,} rows (nothing re-written)"}
 
 
@@ -998,7 +998,7 @@ run_timed("7a · range join without the range-join optimization", "Do",
 # MAGIC
 # MAGIC ![Duplicate keys multiply rows](./images/scd_explosion.png)
 # MAGIC
-# MAGIC `dim_customer_history` is a type-2 slowly changing dimension: one row **per version** of each customer.
+# MAGIC `sdd_dim_customer_history` is a type-2 slowly changing dimension: one row **per version** of each customer.
 # MAGIC Joining orders to it on `customer_id` alone matches each order with every version of its customer.
 # MAGIC Row counts and revenue are inflated, the job is slower because it shuffles the extra rows, and
 # MAGIC nothing fails, so dashboards are just quietly wrong.
@@ -1174,13 +1174,13 @@ run_timed("8 · window without partitionBy", "Do", days_between_orders_partition
 
 # DBTITLE 1,🚫 Don't: partitionBy(date, dealer)
 q4_orders = orders.where("order_date BETWEEN '2025-10-01' AND '2025-12-31'")
-spark.sql(f"DROP TABLE IF EXISTS {T('scratch_orders_partitioned')}")
+spark.sql(f"DROP TABLE IF EXISTS {T('sdd_scratch_orders_partitioned')}")
 
 
 # 🚫 DON'T: partition by high-cardinality columns (the first 2 of the quarter's 92 days)
 def write_over_partitioned():
-    q4_orders.where("order_date < '2025-10-03'").write.mode("overwrite").partitionBy("order_date", "dealer_id").saveAsTable(T("scratch_orders_partitioned"))
-    files = spark.sql(f"DESCRIBE DETAIL {T('scratch_orders_partitioned')}").first().numFiles
+    q4_orders.where("order_date < '2025-10-03'").write.mode("overwrite").partitionBy("order_date", "dealer_id").saveAsTable(T("sdd_scratch_orders_partitioned"))
+    files = spark.sql(f"DESCRIBE DETAIL {T('sdd_scratch_orders_partitioned')}").first().numFiles
     return {"note": f"{files:,} files written for 2 days (the whole quarter: ~46x that)"}
 
 
@@ -1190,12 +1190,12 @@ run_timed("9a · partitionBy(order_date, dealer_id)", "Don't", write_over_partit
 
 # DBTITLE 1,✅ Do: CLUSTER BY
 # ✅ DO: liquid clustering on the same columns
-spark.sql(f"DROP TABLE IF EXISTS {T('scratch_orders_clustered')}")
+spark.sql(f"DROP TABLE IF EXISTS {T('sdd_scratch_orders_clustered')}")
 
 
 def write_clustered():
-    q4_orders.write.mode("overwrite").clusterBy("order_date", "dealer_id").saveAsTable(T("scratch_orders_clustered"))
-    files = spark.sql(f"DESCRIBE DETAIL {T('scratch_orders_clustered')}").first().numFiles
+    q4_orders.write.mode("overwrite").clusterBy("order_date", "dealer_id").saveAsTable(T("sdd_scratch_orders_clustered"))
+    files = spark.sql(f"DESCRIBE DETAIL {T('sdd_scratch_orders_clustered')}").first().numFiles
     return {"note": f"{files:,} files written"}
 
 
@@ -1218,7 +1218,7 @@ run_timed("9a · partitionBy(order_date, dealer_id)", "Do", write_clustered)
 # DBTITLE 1,🚫 Don't: coalesce(1)
 # 🚫 DON'T: squeeze the whole write through one task (35% of the orders)
 def write_single_file():
-    sample_orders(0.35).coalesce(1).write.mode("overwrite").saveAsTable(T("scratch_orders_one_file"))
+    sample_orders(0.35).coalesce(1).write.mode("overwrite").saveAsTable(T("sdd_scratch_orders_one_file"))
 
 
 run_timed("9b · coalesce(1) before writing 100M rows", "Don't", write_single_file, fraction=0.35)
@@ -1228,8 +1228,8 @@ run_timed("9b · coalesce(1) before writing 100M rows", "Don't", write_single_fi
 # DBTITLE 1,✅ Do: parallel write
 # ✅ DO: let Spark write in parallel (optimized writes size the files for you)
 def write_parallel():
-    orders.write.mode("overwrite").saveAsTable(T("scratch_orders_parallel"))
-    files = spark.sql(f"DESCRIBE DETAIL {T('scratch_orders_parallel')}").first().numFiles
+    orders.write.mode("overwrite").saveAsTable(T("sdd_scratch_orders_parallel"))
+    files = spark.sql(f"DESCRIBE DETAIL {T('sdd_scratch_orders_parallel')}").first().numFiles
     return {"note": f"{files:,} files written in parallel"}
 
 
@@ -1338,15 +1338,15 @@ display(small.selectExpr("n", "n * n AS n_squared"))
 # COMMAND ----------
 
 # DBTITLE 1,🧞 The slow scorecard job
-def build_dealer_scorecard_slow(region="Midwest", month="2025-12", target_table=T("dealer_scorecard_slow")):
+def build_dealer_scorecard_slow(region="Midwest", month="2025-12", target_table=T("sdd_dealer_scorecard_slow")):
     """Scorecard per dealer in `region` for `month` (YYYY-MM): orders, customers, net revenue, margin,
     margin %, top category and revenue rank. Overwrites target_table."""
-    region_dealers = spark.table(SRC("dim_dealer")).where(F.col("region") == region).collect()
-    parts_pdf = spark.table(SRC("dim_part")).toPandas()
+    region_dealers = spark.table(SRC("sdd_dim_dealer")).where(F.col("region") == region).collect()
+    parts_pdf = spark.table(SRC("sdd_dim_part")).toPandas()
 
     rows = []
     for d in region_dealers:
-        dealer_orders = spark.table(SRC("fact_orders")).where(
+        dealer_orders = spark.table(SRC("sdd_fact_orders")).where(
             (F.col("dealer_id") == d.dealer_id) & (F.date_format("order_date", "yyyy-MM") == month)
         )
         if dealer_orders.count() == 0:
@@ -1383,7 +1383,7 @@ run_timed("11 · Genie Code challenge: dealer scorecard", "Don't", build_dealer_
 
 # DBTITLE 1,🧞 Your optimized version
 # 🧞 Paste Genie Code's optimized version here. Keep the name, signature and output columns.
-def build_dealer_scorecard_fast(region="Midwest", month="2025-12", target_table=T("dealer_scorecard_fast")):
+def build_dealer_scorecard_fast(region="Midwest", month="2025-12", target_table=T("sdd_dealer_scorecard_fast")):
     raise NotImplementedError("Ask Genie Code to optimize build_dealer_scorecard_slow, then paste the result here.")
 
 # COMMAND ----------
@@ -1392,7 +1392,7 @@ def build_dealer_scorecard_fast(region="Midwest", month="2025-12", target_table=
 # Check: runs your version, times it, and compares the output with the expected result
 fast_result = run_timed("11 · Genie Code challenge: dealer scorecard", "Do", build_dealer_scorecard_fast)
 if fast_result is not None:
-    check_dealer_scorecard(T("dealer_scorecard_fast"))
+    check_dealer_scorecard(T("sdd_dealer_scorecard_fast"))
 else:
     print("Not there yet: fix the error above, then rerun this cell.")
 
@@ -1426,11 +1426,11 @@ else:
 # COMMAND ----------
 
 # DBTITLE 1,🧹 Optional cleanup
-tag_workshop_objects()  # tag the scratch_* tables this notebook wrote in your schema
+tag_workshop_objects()  # tag the sdd_scratch_* tables this notebook wrote in your schema
 
 # Optional: remove the scratch tables this notebook wrote in your schema (the shared source data is untouched)
 CLEAN_UP = False
 if CLEAN_UP:
-    for t in spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{USER_SCHEMA}` LIKE 'scratch_*'").collect():
+    for t in spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{USER_SCHEMA}` LIKE 'sdd_scratch_*'").collect():
         spark.sql(f"DROP TABLE IF EXISTS {T(t.tableName)}")
         print("dropped", t.tableName)

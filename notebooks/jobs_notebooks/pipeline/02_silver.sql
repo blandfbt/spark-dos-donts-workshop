@@ -4,10 +4,10 @@
 --   * de-duplication is AUTO CDC: keep the latest version of each order_id (by sent_at), incrementally
 --
 -- Pipeline configuration (set by ../00_create_pipeline_and_job):
---   source_catalog / source_schema   dbx_workshop_dev / shared   (where dim_part lives, read-only)
+--   source_catalog / source_schema   dbx_workshop_dev / shared   (where sdd_dim_part lives, read-only)
 
 -- 1 + 2: type and standardize every order line; rows that fail a rule are dropped (and counted)
-CREATE OR REFRESH STREAMING TABLE pipeline_silver_orders_valid (
+CREATE OR REFRESH STREAMING TABLE lakeflow_silver_orders_valid (
   CONSTRAINT parseable_timestamp EXPECT (order_ts IS NOT NULL)   ON VIOLATION DROP ROW,
   CONSTRAINT known_dealer        EXPECT (dealer_id IS NOT NULL)  ON VIOLATION DROP ROW,
   CONSTRAINT positive_quantity   EXPECT (quantity > 0)           ON VIOLATION DROP ROW,
@@ -33,21 +33,21 @@ FROM (
     try_to_timestamp(sent_at, "yyyy-MM-dd'T'HH:mm:ss'Z'")                AS sent_at,
     _source_file,
     _ingested_at
-  FROM STREAM(pipeline_bronze_orders_fact)
+  FROM STREAM(lakeflow_bronze_orders_fact)
 );
 
 -- 3: one row per order_id, the latest version wins (the lab's QUALIFY row_number() ... = 1, done incrementally)
-CREATE OR REFRESH STREAMING TABLE pipeline_silver_orders_fact
+CREATE OR REFRESH STREAMING TABLE lakeflow_silver_orders_fact
 COMMENT 'December 2025 order lines: typed, cleaned, one row per order_id';
 
-CREATE FLOW pipeline_silver_orders_dedupe AS AUTO CDC INTO pipeline_silver_orders_fact
-FROM STREAM(pipeline_silver_orders_valid)
+CREATE FLOW lakeflow_silver_orders_dedupe AS AUTO CDC INTO lakeflow_silver_orders_fact
+FROM STREAM(lakeflow_silver_orders_valid)
 KEYS (order_id)
 SEQUENCE BY sent_at
 STORED AS SCD TYPE 1;
 
 -- 4: quarantine the rows that failed a rule, with the reason, instead of silently losing them
-CREATE OR REFRESH STREAMING TABLE pipeline_quarantine_orders_fact
+CREATE OR REFRESH STREAMING TABLE lakeflow_quarantine_orders_fact
 COMMENT 'Order lines that failed a silver rule'
 AS SELECT *,
   CASE WHEN order_ts IS NULL THEN 'unparseable timestamp'
@@ -63,12 +63,12 @@ FROM (
     try_cast(quantity AS INT)                                            AS quantity,
     try_cast(regexp_replace(unit_price, '[$,]', '') AS DOUBLE)           AS unit_price,
     _source_file
-  FROM STREAM(pipeline_bronze_orders_fact)
+  FROM STREAM(lakeflow_bronze_orders_fact)
 )
 WHERE order_ts IS NULL OR dealer_id IS NULL OR quantity IS NULL OR quantity <= 0 OR unit_price IS NULL;
 
 -- Dealers: one row per dealer, latest version, cleaned text
-CREATE OR REFRESH MATERIALIZED VIEW pipeline_silver_dealers_dim
+CREATE OR REFRESH MATERIALIZED VIEW lakeflow_silver_dealers_dim
 COMMENT 'Dealer reference: one row per dealer, latest version, cleaned text'
 AS SELECT
   CAST(dealer_id AS INT)                                              AS dealer_id,
@@ -77,11 +77,11 @@ AS SELECT
   upper(trim(state))                                                  AS state,
   dealer_tier,
   to_timestamp(updated_at)                                            AS updated_at
-FROM pipeline_bronze_dealers_dim
+FROM lakeflow_bronze_dealers_dim
 QUALIFY row_number() OVER (PARTITION BY dealer_id ORDER BY to_timestamp(updated_at) DESC) = 1;
 
 -- Parts: conformed from the shared parts catalog (already a clean Delta table)
-CREATE OR REFRESH MATERIALIZED VIEW pipeline_silver_parts_dim
+CREATE OR REFRESH MATERIALIZED VIEW lakeflow_silver_parts_dim
 COMMENT 'Parts reference: one row per part, only the columns gold needs'
 AS SELECT part_id, part_name, category, list_price, unit_cost
-FROM ${source_catalog}.${source_schema}.dim_part;
+FROM ${source_catalog}.${source_schema}.sdd_dim_part;

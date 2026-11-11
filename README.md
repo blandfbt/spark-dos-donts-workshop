@@ -119,7 +119,7 @@ databricks bundle run -t dev -p <profile> workshop_setup
 
 The setup job runs `instructor_setup/00_generate_workshop_data` (star schema, telemetry, raw files) and then
 `instructor_setup/01_prebuild_shared_gold`, which runs the lab auto-solved into `shared` so the Genie notebooks
-have `endtoend_gold_*` and `endtoend_silver_*_dim` tables to build on. You can also run both notebooks by hand.
+have `lab_gold_*` and `lab_silver_*_dim` tables to build on. You can also run both notebooks by hand.
 
 4. **Create the participant schemas:** open `instructor_setup/02_create_participant_schemas`, paste the
    participants' emails into `PARTICIPANTS` and run it. It creates `dbx_workshop_dev.<firstname_lastname>` for each
@@ -142,7 +142,7 @@ have `endtoend_gold_*` and `endtoend_silver_*_dim` tables to build on. You can a
 5. **Production version of the lab:** run **`notebooks/jobs_notebooks/00_create_pipeline_and_job`**. It creates a
    Lakeflow Spark Declarative Pipeline from `jobs_notebooks/pipeline/` (Auto Loader bronze, expectations and AUTO CDC
    in silver, materialized views in gold) and a Lakeflow Job that runs it and then `01_check_pipeline_output`, which
-   compares the pipeline's gold tables with the lab's. Its tables are prefixed `pipeline_` in your schema; every
+   compares the pipeline's gold tables with the lab's. Its tables are prefixed `lakeflow_` in your schema; every
    setting (names, schedule, full refresh, run now) is in the notebook's ✏️ settings cell.
 
 Ignore `instructor_setup/`: it's what the instructor ran beforehand.
@@ -163,7 +163,7 @@ Instructor bundle variables (`--var=...`), passed to the notebooks as job parame
 |---|---|---|
 | `catalog` / `source_schema` | `dbx_workshop_dev` / `shared` | override CONFIG for the jobs |
 | `user_schema` | *(empty)* | target schema for `workshop_dry_run` |
-| `fact_rows` | `100000000` | size of `fact_orders` (the other tables are fixed size) |
+| `fact_rows` | `100000000` | size of `sdd_fact_orders` (the other tables are fixed size) |
 | `dont_timeout_seconds` | `120` | watchdog limit per Don't |
 | `workshop_tag` | `spark_dos_donts` | value of the `workshop_name` tag on jobs and Unity Catalog objects |
 | `warehouse_id` | *(empty)* | SQL warehouse for the lab dashboard; empty = first serverless warehouse found |
@@ -187,7 +187,7 @@ the notebooks print a note and carry on. The lab's AI/BI dashboard can't be tagg
 ## Clean up
 
 * A participant's own tables: `reset_lab()` in notebook 01 and the last cell of notebook 02 (`CLEAN_UP = True`) drop the
-  `endtoend_*` / `scratch_*` tables in their schema; `genie/README.md` lists what the Genie notebooks create.
+  `lab_*` / `sdd_scratch_*` tables in their schema; `genie/README.md` lists what the Genie notebooks create.
 * After the workshop (instructor): `DROP SCHEMA dbx_workshop_dev.<firstname_lastname> CASCADE` per participant,
   `DROP SCHEMA dbx_workshop_dev.shared CASCADE` for the source data, and `databricks bundle destroy -t dev -p <profile>`.
 

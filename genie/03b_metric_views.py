@@ -30,14 +30,14 @@
 # MAGIC 2. **A curated agent**: a clear instruction plus **example `MEASURE()` queries**, so Genie writes the metric-view
 # MAGIC    dialect correctly.
 # MAGIC
-# MAGIC **Two views, because the gold layer has two grains.** `endtoend_gold_daily_dealer_sales_fact` knows the *day* and
-# MAGIC the *dealer* but not the part category; `endtoend_gold_category_region_fact` knows the *category* but not the day
+# MAGIC **Two views, because the gold layer has two grains.** `lab_gold_daily_dealer_sales_fact` knows the *day* and
+# MAGIC the *dealer* but not the part category; `lab_gold_category_region_fact` knows the *category* but not the day
 # MAGIC or dealer. So:
 # MAGIC
 # MAGIC | metric view (in **your** schema) | source (shared) | slice by |
 # MAGIC |---|---|---|
-# MAGIC | `mv_dealer_sales` | daily dealer sales, joined to the dealers dim | date, week, region, dealer tier, dealer, dealer state |
-# MAGIC | `mv_category_sales` | category × region sales | region, category |
+# MAGIC | `genie_mv_dealer_sales` | daily dealer sales, joined to the dealers dim | date, week, region, dealer tier, dealer, dealer state |
+# MAGIC | `genie_mv_category_sales` | category × region sales | region, category |
 # MAGIC
 # MAGIC **Perimeter trade-off (teach this):** a metric view is deterministic *within its scope* but can't answer questions
 # MAGIC outside it. "Margin % for Brakes **at Platinum dealers**" can't be answered by either view, because no gold table
@@ -76,8 +76,8 @@ warehouse_id = pick_warehouse()
 # MAGIC %md
 # MAGIC ## 1. Create the metric views
 # MAGIC
-# MAGIC `mv_dealer_sales` sits on the daily dealer sales table and joins to the dealers dimension (for the dealer's state).
-# MAGIC `mv_category_sales` sits on the category × region table. Both expose the **same measure names** with the formulas
+# MAGIC `genie_mv_dealer_sales` sits on the daily dealer sales table and joins to the dealers dimension (for the dealer's state).
+# MAGIC `genie_mv_category_sales` sits on the category × region table. Both expose the **same measure names** with the formulas
 # MAGIC baked in: `margin_percent` is `100 × SUM(margin) / SUM(net_revenue)`, so nobody averages percentages by mistake.
 # MAGIC Money and percentage measures are **rounded to 2 decimals in the view**, so every consumer reports the same number.
 # MAGIC

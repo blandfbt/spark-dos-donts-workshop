@@ -75,7 +75,7 @@ import copy
 
 GENIE_SPACE_ID = load_config().get(CFG_KEY_CURATED, "")
 if not GENIE_SPACE_ID:
-    raise RuntimeError("genie_space_id not found in workshop_config. Run notebook 04 first.")
+    raise RuntimeError("genie_space_id not found in genie_workshop_config. Run notebook 04 first.")
 print(f"Agent: {GENIE_SPACE_ID}")
 
 # COMMAND ----------

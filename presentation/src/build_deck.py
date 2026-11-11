@@ -165,7 +165,7 @@ def g_anatomy():
 
 def g_lazy():
     s = Svg(1720, 520)
-    nodes = [("spark.table", "orders"), ("filter", "2025 only"), ("join", "dim_part"), ("groupBy", "dealer")]
+    nodes = [("spark.table", "orders"), ("filter", "2025 only"), ("join", "sdd_dim_part"), ("groupBy", "dealer")]
     for i, (op, sub) in enumerate(nodes):
         x = i * 330
         s.box(x, 60, 280, 120, op, sub, "#fff", SLATE, NAVY, 30, mono=True)

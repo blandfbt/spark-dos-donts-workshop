@@ -92,22 +92,21 @@ def data_model():
     # star schema
     s.rect(20, 55, 560, 395, GREY_BG, LINE, 12)
     s.text(40, 82, "Star schema", 16, MUTED, "bold", "start")
-    s.box(215, 210, 170, 76, "fact_orders", "~100M order lines", BLUE_BG, BLUE)
-    dims = [(45, 105, "dim_date", "730 days"), (395, 105, "dim_dealer", "500 dealers"),
-            (45, 330, "dim_part", "25k parts"), (395, 330, "dim_customer", "2M (current)"),
-            (215, 360, "dim_customer_history", "SCD2, 1–3 versions")]
-    for x, y, n, sub in dims:
-        w = 170
-        s.box(x, y, w, 62, n, sub)
+    s.box(215, 210, 170, 76, "sdd_fact_orders", "~100M order lines", BLUE_BG, BLUE)
+    dims = [(40, 105, 160, "sdd_dim_date", "730 days"), (400, 105, 160, "sdd_dim_dealer", "500 dealers"),
+            (40, 330, 160, "sdd_dim_part", "25k parts"), (400, 330, 160, "sdd_dim_customer", "2M (current)"),
+            (205, 360, 190, "sdd_dim_customer_history", "SCD2, 1–3 versions")]
+    for x, y, w, n, sub in dims:
+        s.box(x, y, w, 62, n, sub, size=15 if len(n) <= 17 else 13)
         cx, cy = x + w / 2, y + 31
         s.add(f'<line x1="{cx}" y1="{cy + (31 if y < 200 else -31)}" x2="300" y2="{210 if y < 200 else 286}" stroke="{LINE}" stroke-width="2"/>')
     # telemetry
     s.rect(600, 55, 380, 230, GREY_BG, LINE, 12)
     s.text(620, 82, "Test-program telemetry", 16, MUTED, "bold", "start")
-    s.box(620, 100, 340, 56, "telemetry_wide", "1M rows × ~300 sensor columns")
-    s.box(620, 172, 160, 90, "telemetry_readings", "1 Hz, 43M rows")
-    s.box(800, 172, 160, 90, "track_sessions", "start_ts / end_ts")
-    s.text(790, 222, "⋈", 18, MUTED)
+    s.box(620, 100, 340, 56, "sdd_telemetry_wide", "1M rows × ~300 sensor columns")
+    s.box(615, 172, 180, 90, "sdd_telemetry_readings", "1 Hz, 43M rows", size=13)
+    s.box(810, 172, 155, 90, "sdd_track_sessions", "start_ts / end_ts", size=14)
+    s.text(802, 222, "⋈", 18, MUTED)
     # volume
     s.rect(600, 300, 380, 150, "#fff7f5", ORANGE, 12)
     s.text(620, 327, "Volume raw_files/", 16, ORANGE, "bold", "start")
@@ -355,13 +354,13 @@ def write_layout():
 
 def medallion_lab():
     s = Svg(1290, 380)
-    s.text(645, 30, "The end-to-end lab: endtoend_<layer>_<entity>_<fact|dim>", 18, INK, "bold")
+    s.text(645, 30, "The end-to-end lab: lab_<layer>_<entity>_<fact|dim>", 18, INK, "bold")
     cols = [
         (20, "Raw files", "volume raw_files/lab/", ["orders_json/ (JSON)", "dealers_csv/ (CSV)"], GREY_BG, MUTED),
-        (270, "Bronze", "as delivered + lineage", ["endtoend_bronze_orders_fact", "endtoend_bronze_dealers_dim"], "#f6e7d8", "#a8642a"),
-        (520, "Silver", "typed · clean · deduped", ["endtoend_silver_orders_fact", "endtoend_silver_dealers_dim",
-                                                   "endtoend_silver_parts_dim", "endtoend_quarantine_orders_fact"], "#eef0f2", "#7d8a96"),
-        (770, "Gold", "aggregated for a purpose", ["endtoend_gold_daily_dealer_sales_fact", "endtoend_gold_category_region_fact"], "#fbf3d5", "#b08d1a"),
+        (270, "Bronze", "as delivered + lineage", ["lab_bronze_orders_fact", "lab_bronze_dealers_dim"], "#f6e7d8", "#a8642a"),
+        (520, "Silver", "typed · clean · deduped", ["lab_silver_orders_fact", "lab_silver_dealers_dim",
+                                                   "lab_silver_parts_dim", "lab_quarantine_orders_fact"], "#eef0f2", "#7d8a96"),
+        (770, "Gold", "aggregated for a purpose", ["lab_gold_daily_dealer_sales_fact", "lab_gold_category_region_fact"], "#fbf3d5", "#b08d1a"),
         (1020, "Serve", "answers and visuals", ["SQL queries", "AI/BI dashboard"], BLUE_BG, BLUE),
     ]
     for x, title, sub, items, fill, stroke in cols:

@@ -10,10 +10,10 @@ LAB_RAW = spark.conf.get("source_volume") + "/lab"
 
 
 @dp.table(
-    name="pipeline_bronze_orders_fact",
+    name="lakeflow_bronze_orders_fact",
     comment="December 2025 order lines exactly as delivered (JSON), with lineage columns",
 )
-def pipeline_bronze_orders_fact():
+def lakeflow_bronze_orders_fact():
     # Auto Loader: only new files are read on each update; the pipeline manages the checkpoint and schema location.
     # JSON columns stay strings (typing happens in silver); fields that don't fit land in _rescued_data.
     return (
@@ -25,10 +25,10 @@ def pipeline_bronze_orders_fact():
 
 
 @dp.materialized_view(
-    name="pipeline_bronze_dealers_dim",
+    name="lakeflow_bronze_dealers_dim",
     comment="Dealer list exactly as delivered (CSV), with lineage columns",
 )
-def pipeline_bronze_dealers_dim():
+def lakeflow_bronze_dealers_dim():
     # The dealer list is a small full extract that is replaced on every delivery: a batch read is the right fit.
     return (
         spark.read.option("header", True)  # every column stays a string in bronze

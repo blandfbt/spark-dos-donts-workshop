@@ -8,7 +8,7 @@
 # MAGIC
 # MAGIC Runs as the **`check_gold`** task of the job created by `00_create_pipeline_and_job`, after the pipeline task
 # MAGIC succeeds (you can also run it by hand). It compares your pipeline's gold tables with the reference copy the
-# MAGIC instructor built from the **same raw files** with the notebook version of the lab (`shared.endtoend_gold_*`),
+# MAGIC instructor built from the **same raw files** with the notebook version of the lab (`shared.lab_gold_*`),
 # MAGIC and shows the data quality results the pipeline recorded. If anything differs, the task fails, so the job run
 # MAGIC is marked failed too.
 
@@ -28,9 +28,9 @@ from operator import or_
 from pyspark.sql import functions as F
 
 CHECKS = [  # (your table, reference table, key columns, exact columns, money columns)
-    ("pipeline_gold_daily_dealer_sales_fact", "endtoend_gold_daily_dealer_sales_fact",
+    ("lakeflow_gold_daily_dealer_sales_fact", "lab_gold_daily_dealer_sales_fact",
      ["order_date", "dealer_id"], ["region", "dealer_name", "dealer_tier", "orders", "units"], ["net_revenue", "margin"]),
-    ("pipeline_gold_category_region_fact", "endtoend_gold_category_region_fact",
+    ("lakeflow_gold_category_region_fact", "lab_gold_category_region_fact",
      ["region", "category"], ["orders", "units"], ["net_revenue", "margin", "margin_pct"]),
 ]
 problems = []
@@ -48,7 +48,7 @@ for mine, reference, keys, exact, money in CHECKS:
     else:
         print(f"✅ {mine}: {a.count():,} rows, same as {SOURCE_SCHEMA}.{reference}")
 
-for layer in ["pipeline_silver_orders_fact", "pipeline_quarantine_orders_fact", "pipeline_silver_dealers_dim"]:
+for layer in ["lakeflow_silver_orders_fact", "lakeflow_quarantine_orders_fact", "lakeflow_silver_dealers_dim"]:
     print(f"   {layer:34} {spark.table(T(layer)).count():>10,} rows")
 
 # COMMAND ----------

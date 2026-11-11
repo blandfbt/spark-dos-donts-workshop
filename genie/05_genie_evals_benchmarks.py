@@ -51,7 +51,7 @@
 # MAGIC %md
 # MAGIC ## Connect and load your agent IDs
 # MAGIC
-# MAGIC Read the Baseline / Metric View / Knowledge Store ids saved by notebooks 03 to 04 in your `workshop_config` table.
+# MAGIC Read the Baseline / Metric View / Knowledge Store ids saved by notebooks 03 to 04 in your `genie_workshop_config` table.
 
 # COMMAND ----------
 
@@ -61,7 +61,7 @@ BLANK_SPACE_ID = _cfg.get(CFG_KEY_BASELINE, "")        # Baseline (03)
 METRIC_SPACE_ID = _cfg.get(CFG_KEY_METRIC_VIEW, "")    # Metric View (03b)
 
 if not PRIMARY_SPACE_ID:
-    raise RuntimeError("genie_space_id not found in workshop_config. Run notebook 04 first.")
+    raise RuntimeError("genie_space_id not found in genie_workshop_config. Run notebook 04 first.")
 
 print("Your Genie agents (click to open):")
 print(f"  Knowledge Store (primary): {genie_ui_room_url(PRIMARY_SPACE_ID)}")
@@ -72,7 +72,7 @@ if BLANK_SPACE_ID:
 print()
 print("Benchmarks are pushed to ALL THREE agents so you can compare pass rates in the UI:")
 print("  - Baseline + Knowledge Store get the table-based suite (they see the four tables).")
-print("  - Metric View gets a KPI-by-dimension suite scoped to mv_dealer_sales / mv_category_sales.")
+print("  - Metric View gets a KPI-by-dimension suite scoped to genie_mv_dealer_sales / genie_mv_category_sales.")
 print("After this notebook completes, open the Benchmark tab for each agent and click Start new run.")
 
 # COMMAND ----------
@@ -286,7 +286,7 @@ print("Note any failures: we'll fix them in the next steps.")
 # MAGIC
 # MAGIC | Category | Example | What it teaches Genie |
 # MAGIC |---|---|---|
-# MAGIC | **FILTER** | `endtoend_silver_dealers_dim.state = 'OH'` means "dealers in Ohio" | state names map to two-letter codes |
+# MAGIC | **FILTER** | `lab_silver_dealers_dim.state = 'OH'` means "dealers in Ohio" | state names map to two-letter codes |
 # MAGIC | **JOIN** | daily dealer sales JOIN dealers dim ON `dealer_id` | where a dealer's state comes from |
 # MAGIC | **MEASURE** | `100 * SUM(margin) / SUM(net_revenue)` means "margin %" | weighted, not averaged |
 # MAGIC | **MEASURE** | `SUM(net_revenue) / SUM(orders)` means "revenue per order" | not an average of daily averages |
@@ -316,7 +316,7 @@ print("Note any failures: we'll fix them in the next steps.")
 
 ADDITIONAL_RULES = [
     "When filtering by region, dealer_tier or category, use exact match (= 'Midwest'), not ILIKE or partial match.",
-    "Map US state names to two-letter codes before filtering endtoend_silver_dealers_dim.state (Ohio = 'OH').",
+    "Map US state names to two-letter codes before filtering lab_silver_dealers_dim.state (Ohio = 'OH').",
     "For integer counts cast the final result with CAST(... AS BIGINT); for money and rates use CAST(ROUND(..., 2) AS DOUBLE).",
 ]
 

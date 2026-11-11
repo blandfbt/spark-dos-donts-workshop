@@ -50,7 +50,7 @@ import html
 PRIMARY_SPACE_ID = load_config().get(CFG_KEY_CURATED, "")
 GENIE_SPACE_ID = PRIMARY_SPACE_ID
 if not PRIMARY_SPACE_ID:
-    print("WARNING: genie_space_id not found in workshop_config. Monitoring links will be incomplete. Run notebook 04 first.")
+    print("WARNING: genie_space_id not found in genie_workshop_config. Monitoring links will be incomplete. Run notebook 04 first.")
 
 # COMMAND ----------
 
@@ -320,7 +320,7 @@ try:
             produced_rows
         FROM system.query.history
         WHERE client_application = 'Databricks SQL Genie Space'
-          AND statement_text ILIKE '%endtoend_%'
+          AND statement_text ILIKE '%lab_%'
           AND start_time >= current_date() - INTERVAL 7 DAYS
         ORDER BY start_time DESC
         LIMIT 25
