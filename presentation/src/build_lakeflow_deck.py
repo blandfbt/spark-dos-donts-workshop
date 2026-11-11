@@ -578,19 +578,6 @@ SELECT * FROM STREAM read_files('/Volumes/...', format => 'json')""") + """</div
             "which went GA for Structured Streaming in March and for declarative pipelines at the end of October, with "
             "latencies in milliseconds. Most pipelines should be triggered; pay for latency only where the business needs it."),
 
-    content("Open source core, Databricks extensions", "Spark Declarative Pipelines is part of Apache Spark 4.1",
-            table(["", "Apache Spark 4.1 (open source)", "Lakeflow on Databricks"], [
-                ["Python &amp; SQL APIs", "<code>pyspark.pipelines</code>: streaming tables, MVs, views, append flows", "same code runs unchanged"],
-                ["Change data", "–", "AUTO CDC, AUTO CDC FROM SNAPSHOT"],
-                ["Data quality", "–", "expectations, event log metrics"],
-                ["Execution", "you run it", "serverless, incremental MV refresh, real-time mode, autoscaling"],
-                ["Development", "CLI", "Pipelines Editor, Genie Code, Designer, bundles"],
-            ]) + '<p class="note-s">Code that uses only the open-source APIs runs anywhere Spark 4.1 runs; the extensions are Databricks-only.</p>',
-            "A frequent question is lock-in. The declarative core is in Apache Spark 4.1, so a pipeline that only uses "
-            "the open-source APIs runs on any Spark 4.1. What Databricks adds is AUTO CDC, expectations, the managed "
-            "serverless execution with incremental refresh and real-time mode, and the tooling. Both use the same "
-            "import, so be deliberate about which features you rely on."),
-
     content("Lakeflow Pipelines Editor", "A multi-file IDE built for pipelines", with_asof("""
     <div class="split"><div>""" + bullets([
         "Pipeline as a <b>folder of Python and SQL files</b>, in a Git folder " + st("ga", "GA May 2026"),
