@@ -4,7 +4,7 @@
 # environment_version = "5"
 # ///
 # MAGIC %md
-# MAGIC # Notebook 03b · Metric Views: the governed semantic layer
+# MAGIC # Notebook 02 · Metric Views: the governed semantic layer
 # MAGIC
 # MAGIC **The single most important idea in this workshop:** a Genie agent is only as good as the data foundation under
 # MAGIC it. **Move the logic to the left**: define your KPIs and joins **once**, in a governed object in Unity Catalog,
@@ -18,7 +18,7 @@
 # MAGIC
 # MAGIC Genie (and dashboards, and SQL users) then all read the *same* trusted definitions.
 # MAGIC
-# MAGIC | | Tables (03, 04) | Metric view (here) |
+# MAGIC | | Tables (01, 03) | Metric view (here) |
 # MAGIC |---|---|---|
 # MAGIC | KPI formula | Genie must learn it (examples/measures) | **Fixed** in the view |
 # MAGIC | Joins | Genie must pick them | **Fixed** in the view |
@@ -42,12 +42,12 @@
 # MAGIC **Perimeter trade-off (teach this):** a metric view is deterministic *within its scope* but can't answer questions
 # MAGIC outside it. "Margin % for Brakes **at Platinum dealers**" can't be answered by either view, because no gold table
 # MAGIC has both category and dealer. That question goes back to silver (or to a new gold table). Pair metric views with
-# MAGIC the table-based Knowledge Store agent in 04 for exploration.
+# MAGIC the table-based Knowledge Store agent in 03 for exploration.
 # MAGIC
 # MAGIC > **Verify the DDL in your workspace.** Metric-view YAML syntax has evolved across releases; if
 # MAGIC > `CREATE VIEW ... WITH METRICS` errors, check the docs for your workspace version.
 # MAGIC
-# MAGIC **Before you start:** run **03** (baseline agent). **Compute:** Serverless.
+# MAGIC **Before you start:** run **01** (baseline agent). **Compute:** Serverless.
 
 # COMMAND ----------
 
@@ -365,9 +365,9 @@ print("The pinned formulas + example MEASURE() queries make it deterministic.")
 # MAGIC %md
 # MAGIC ## Next
 # MAGIC
-# MAGIC - **04 · Knowledge Store:** curate the *tables* with column configs, synonyms, joins, measures, filters and
+# MAGIC - **03 · Knowledge Store:** curate the *tables* with column configs, synonyms, joins, measures, filters and
 # MAGIC   example SQL (the primary agent).
-# MAGIC - **08** compares Baseline vs. **Metric View** vs. Knowledge Store on KPI-by-dimension questions: both curated
+# MAGIC - **06** compares Baseline vs. **Metric View** vs. Knowledge Store on KPI-by-dimension questions: both curated
 # MAGIC   agents should clearly beat the baseline.
 # MAGIC
 # MAGIC **Takeaway for your own domain:** for the KPIs your business runs on, define them once in a metric view *and*

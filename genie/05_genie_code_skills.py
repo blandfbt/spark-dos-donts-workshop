@@ -4,7 +4,7 @@
 # environment_version = "5"
 # ///
 # MAGIC %md
-# MAGIC # Notebook 07 · Genie Code and custom skills
+# MAGIC # Notebook 05 · Genie Code and custom skills
 # MAGIC
 # MAGIC **What you'll do:**
 # MAGIC 1. Understand the difference between **Genie (SQL agents)** and **Genie Code**
@@ -15,7 +15,7 @@
 # MAGIC **The idea:** you describe *what* you want (a Genie agent with these tables and business rules). The skill teaches
 # MAGIC Genie Code *how* (metric definitions, join paths, API best practices). You never write API code yourself.
 # MAGIC
-# MAGIC **Before you start:** run **04** (Knowledge Store agent) and **05** (benchmarks). **Compute:** Serverless.
+# MAGIC **Before you start:** run **03** (Knowledge Store agent) and **04** (benchmarks). **Compute:** Serverless.
 
 # COMMAND ----------
 
@@ -38,7 +38,7 @@
 
 PRIMARY_SPACE_ID = load_config().get(CFG_KEY_CURATED, "")
 if not PRIMARY_SPACE_ID:
-    raise RuntimeError("genie_space_id not found in genie_workshop_config. Run notebook 04 first.")
+    raise RuntimeError("genie_space_id not found in genie_workshop_config. Run notebook 03 first.")
 print(f"Primary agent: {genie_ui_room_url(PRIMARY_SPACE_ID)}")
 
 # COMMAND ----------
@@ -67,7 +67,7 @@ print(f"Primary agent: {genie_ui_room_url(PRIMARY_SPACE_ID)}")
 # MAGIC <repo>/
 # MAGIC   CONFIG
 # MAGIC   genie/
-# MAGIC     07_genie_code_skills          <-- you are here
+# MAGIC     05_genie_code_skills          <-- you are here
 # MAGIC     skill/
 # MAGIC       apex-motorsports-analytics_genie/
 # MAGIC         SKILL.md
@@ -270,4 +270,4 @@ print(f"\nPrompt length: {len(prompt_analysis):,} chars")
 # MAGIC   - API best practices
 # MAGIC ```
 # MAGIC
-# MAGIC **Next:** notebook **08**: compare the baseline, metric-view and Knowledge Store agents.
+# MAGIC **Next:** notebook **06**: compare the baseline, metric-view and Knowledge Store agents.

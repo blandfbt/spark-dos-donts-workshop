@@ -52,8 +52,8 @@ GENIE_SOURCE_TABLES = sorted([GOLD_DAILY_TABLE, GOLD_CATEGORY_TABLE, DEALERS_TAB
 # Objects you create
 CONFIG_TABLE = full_table("genie_workshop_config")
 BENCHMARK_RUNS_TABLE = full_table("genie_benchmark_runs")
-METRIC_VIEW_DEALER_SALES = full_table("genie_mv_dealer_sales")       # built in 03b
-METRIC_VIEW_CATEGORY_SALES = full_table("genie_mv_category_sales")   # built in 03b
+METRIC_VIEW_DEALER_SALES = full_table("genie_mv_dealer_sales")       # built in 02
+METRIC_VIEW_CATEGORY_SALES = full_table("genie_mv_category_sales")   # built in 02
 
 # COMMAND ----------
 
@@ -67,15 +67,15 @@ METRIC_VIEW_CATEGORY_SALES = full_table("genie_mv_category_sales")   # built in 
 
 # DBTITLE 1,Agent variants and genie_workshop_config keys
 # The workshop builds three agents on the SAME data to show that curation is what earns trust:
-#   Baseline         (03)  tables only, minimal instructions ... the "before"
-#   Metric View      (03b) built on governed metric views    ... semantic layer
-#   Knowledge Store  (04)  measures/filters/joins/examples   ... the "after" (primary)
+#   Baseline         (01)  tables only, minimal instructions ... the "before"
+#   Metric View      (02) built on governed metric views    ... semantic layer
+#   Knowledge Store  (03)  measures/filters/joins/examples   ... the "after" (primary)
 # Titles include your schema so participants' agents never collide in a shared workspace.
 GENIE_TITLE_BASELINE = f"{GENIE_SPACE_PREFIX} - Baseline ({USER_SCHEMA})"
 GENIE_TITLE_CURATED = f"{GENIE_SPACE_PREFIX} - Knowledge Store ({USER_SCHEMA})"
 GENIE_TITLE_METRIC_VIEW = f"{GENIE_SPACE_PREFIX} - Metric View ({USER_SCHEMA})"
 GENIE_TITLE_GENIE_CODE = f"{GENIE_SPACE_PREFIX} - Genie Code Built ({USER_SCHEMA})"   # built by Genie Code in 07
-GENIE_TITLE_CICD_DEMO = f"[CICD DEMO] {GENIE_TITLE_CURATED}"                         # deployed copy in 11
+GENIE_TITLE_CICD_DEMO = f"[CICD DEMO] {GENIE_TITLE_CURATED}"                         # deployed copy in 08
 
 GENIE_DESC_BASELINE = "Tables only, minimal instructions. The 'before': baseline for comparison."
 GENIE_DESC_CURATED = "Fully curated Knowledge Store: column configs, synonyms, joins, measures, filters, example SQL."
@@ -301,9 +301,9 @@ print(f"Source data (read-only) : {SOURCE_FQN}")
 print(f"Your schema             : {FULL_SCHEMA}")
 print(f"Warehouse ID            : {SQL_WAREHOUSE_ID or '(auto-select)'}")
 print("Your Genie agents (look for these names in Genie):")
-print(f"  Baseline         : {GENIE_TITLE_BASELINE}   (created in 03)")
-print(f"  Metric View      : {GENIE_TITLE_METRIC_VIEW}   (created in 03b)")
-print(f"  Knowledge Store  : {GENIE_TITLE_CURATED}   (created in 04)")
-print(f"  Genie Code Built : {GENIE_TITLE_GENIE_CODE}   (created by Genie Code in 07)")
-print(f"  CI/CD demo copy  : {GENIE_TITLE_CICD_DEMO}   (created in 11)")
+print(f"  Baseline         : {GENIE_TITLE_BASELINE}   (created in 01)")
+print(f"  Metric View      : {GENIE_TITLE_METRIC_VIEW}   (created in 02)")
+print(f"  Knowledge Store  : {GENIE_TITLE_CURATED}   (created in 03)")
+print(f"  Genie Code Built : {GENIE_TITLE_GENIE_CODE}   (created by Genie Code in 05)")
+print(f"  CI/CD demo copy  : {GENIE_TITLE_CICD_DEMO}   (created in 08)")
 print("=" * 66)

@@ -23,7 +23,7 @@
 # MAGIC landing files. Rerunning is safe: existing schemas and grants are left as they are.
 # MAGIC
 # MAGIC **Outside Unity Catalog** (not done here): participants also need **CAN USE** on a SQL warehouse (lab dashboard,
-# MAGIC Genie spaces) and Genie enabled in the workspace. `genie/10_monitoring_observability` reads `system.access.audit`
+# MAGIC Genie spaces) and Genie enabled in the workspace. `genie/07_monitoring_observability` reads `system.access.audit`
 # MAGIC and `system.query.history`, which needs a metastore admin to grant `USE SCHEMA` + `SELECT` on those system schemas.
 
 # COMMAND ----------

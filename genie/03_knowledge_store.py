@@ -4,7 +4,7 @@
 # environment_version = "5"
 # ///
 # MAGIC %md
-# MAGIC # Notebook 04 · The Knowledge Store (curation that earns trust)
+# MAGIC # Notebook 03 · The Knowledge Store (curation that earns trust)
 # MAGIC
 # MAGIC This is the heart of the Genie workshop. Teams that see low Genie adoption almost always **skipped this step**:
 # MAGIC they attach tables, stuff every rule into one giant instructions blob, and hope. The
@@ -36,7 +36,7 @@
 # MAGIC > `GET /api/2.0/genie/spaces/<id>?include_serialized_space=true`. If a field differs, adjust the builders below;
 # MAGIC > the structure is what matters.
 # MAGIC
-# MAGIC **Before you start:** run **03** (baseline). **Compute:** Serverless.
+# MAGIC **Before you start:** run **01** (baseline). **Compute:** Serverless.
 
 # COMMAND ----------
 
@@ -410,8 +410,8 @@ print("the curated joins, measures and examples make the difference.")
 # MAGIC %md
 # MAGIC ## Next
 # MAGIC
-# MAGIC - **05 · Benchmarks:** measure this agent's accuracy against ground-truth SQL.
-# MAGIC - **08 · Compare:** Baseline vs. Metric View vs. **Knowledge Store**, head-to-head.
+# MAGIC - **04 · Benchmarks:** measure this agent's accuracy against ground-truth SQL.
+# MAGIC - **06 · Compare:** Baseline vs. Metric View vs. **Knowledge Store**, head-to-head.
 # MAGIC
 # MAGIC **Takeaway:** curation isn't one big instruction. It's a handful of small, structured, testable pieces. That's what
 # MAGIC turns a demo into an agent people trust.

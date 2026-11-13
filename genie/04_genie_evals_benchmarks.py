@@ -4,7 +4,7 @@
 # environment_version = "5"
 # ///
 # MAGIC %md
-# MAGIC # Notebook 05 · Benchmarks and evaluation
+# MAGIC # Notebook 04 · Benchmarks and evaluation
 # MAGIC
 # MAGIC **What you'll learn:** how to define **[benchmark questions](https://docs.databricks.com/aws/en/genie/benchmarks)**
 # MAGIC for your Genie agent: questions with known SQL answers that let you measure accuracy over time.
@@ -20,7 +20,7 @@
 # MAGIC 5. Shows how to **fix failures by updating instructions** programmatically.
 # MAGIC 6. Runs a 4-question smoke test through the Conversation API.
 # MAGIC
-# MAGIC **Before you start:** run **03** (baseline), **03b** (metric view) and **04** (Knowledge Store) so all three agents
+# MAGIC **Before you start:** run **01** (baseline), **02** (metric view) and **03** (Knowledge Store) so all three agents
 # MAGIC exist. **Compute:** Serverless.
 
 # COMMAND ----------
@@ -32,8 +32,8 @@
 # MAGIC - Compute expected answers in **SQL from the same tables** Genie uses: no manual guesswork.
 # MAGIC - Mix **counts, sums, ratios and filters** (net revenue, orders, margin %, revenue per order).
 # MAGIC - Use questions **real users would ask**; update benchmarks when the schema changes.
-# MAGIC - In notebook 08 (compare), allow a small tolerance for rounding on ratio queries.
-# MAGIC - The **example SQL** in notebook 04 teaches Genie *style*; benchmarks here track *correctness* over time.
+# MAGIC - In notebook 06 (compare), allow a small tolerance for rounding on ratio queries.
+# MAGIC - The **example SQL** in notebook 03 teaches Genie *style*; benchmarks here track *correctness* over time.
 # MAGIC - If the API step errors, you can add the same questions under **Benchmark** in the Genie UI.
 
 # COMMAND ----------
@@ -51,17 +51,17 @@
 # MAGIC %md
 # MAGIC ## Connect and load your agent IDs
 # MAGIC
-# MAGIC Read the Baseline / Metric View / Knowledge Store ids saved by notebooks 03 to 04 in your `genie_workshop_config` table.
+# MAGIC Read the Baseline / Metric View / Knowledge Store ids saved by notebooks 01 to 03 in your `genie_workshop_config` table.
 
 # COMMAND ----------
 
 _cfg = load_config()
 PRIMARY_SPACE_ID = _cfg.get(CFG_KEY_CURATED, "")
-BLANK_SPACE_ID = _cfg.get(CFG_KEY_BASELINE, "")        # Baseline (03)
-METRIC_SPACE_ID = _cfg.get(CFG_KEY_METRIC_VIEW, "")    # Metric View (03b)
+BLANK_SPACE_ID = _cfg.get(CFG_KEY_BASELINE, "")        # Baseline (01)
+METRIC_SPACE_ID = _cfg.get(CFG_KEY_METRIC_VIEW, "")    # Metric View (02)
 
 if not PRIMARY_SPACE_ID:
-    raise RuntimeError("genie_space_id not found in genie_workshop_config. Run notebook 04 first.")
+    raise RuntimeError("genie_space_id not found in genie_workshop_config. Run notebook 03 first.")
 
 print("Your Genie agents (click to open):")
 print(f"  Knowledge Store (primary): {genie_ui_room_url(PRIMARY_SPACE_ID)}")
@@ -115,7 +115,7 @@ benchmarks_v1 = [
     {"q": "How many order lines did Standard tier dealers have in December 2025?",
      "gt": f"SELECT CAST(SUM(orders) AS BIGINT) AS orders FROM {D} WHERE dealer_tier = 'Standard'"},
     # --- Pattern-teaching benchmarks (Q8-Q12) ---
-    # They teach the patterns the 4 evaluation questions in 08 need, with DIFFERENT tiers/regions/states/weeks.
+    # They teach the patterns the 4 evaluation questions in 06 need, with DIFFERENT tiers/regions/states/weeks.
     {"q": "What was the margin % for Gold tier dealers in December 2025, as total margin divided by total net revenue?",
      "gt": f"SELECT CAST(ROUND(100.0 * SUM(margin) / NULLIF(SUM(net_revenue), 0), 2) AS DOUBLE) AS margin_pct "
             f"FROM {D} WHERE dealer_tier = 'Gold'"},
@@ -238,11 +238,11 @@ push_benchmarks(benchmarks_v1, PRIMARY_SPACE_ID, "Knowledge Store benchmarks")
 if BLANK_SPACE_ID:
     push_benchmarks(benchmarks_v1, BLANK_SPACE_ID, "Baseline benchmarks")
 else:
-    print("Baseline agent id not found: run notebook 03 to include it in the comparison.")
+    print("Baseline agent id not found: run notebook 01 to include it in the comparison.")
 if METRIC_SPACE_ID:
     push_benchmarks(benchmarks_mv, METRIC_SPACE_ID, "Metric View benchmarks")
 else:
-    print("Metric View agent id not found: run notebook 03b to include it in the comparison.")
+    print("Metric View agent id not found: run notebook 02 to include it in the comparison.")
 
 print("\nBenchmarks pushed. Open the Benchmark tab for each agent and click Run all benchmarks:")
 print(f"  Knowledge Store: {genie_ui_room_url(PRIMARY_SPACE_ID)}")
@@ -392,7 +392,7 @@ print(f"  {genie_ui_room_url(PRIMARY_SPACE_ID)}")
 # MAGIC | H3 | Best week of net revenue in the Southwest | Monday-start weeks + MAX over a grouped subquery |
 # MAGIC | H4 | Lowest-margin part category in the Northwest | the category table, not the daily table |
 # MAGIC
-# MAGIC Notebook **08** runs a separate set of KPI-by-dimension questions across all three agents.
+# MAGIC Notebook **06** runs a separate set of KPI-by-dimension questions across all three agents.
 
 # COMMAND ----------
 
@@ -428,5 +428,5 @@ for i, hq in enumerate(hard_questions, 1):
 
 rate = passes / len(hard_questions) * 100
 print(f"\nSmoke test: {passes}/{len(hard_questions)} ({rate:.0f}%)")
-print("All 4 hard questions passed. Ready for notebook 06." if rate == 100
-      else "Some questions failed. Review the instructions and example SQL in notebook 04.")
+print("All 4 hard questions passed. Ready for notebook 05." if rate == 100
+      else "Some questions failed. Review the instructions and example SQL in notebook 03.")

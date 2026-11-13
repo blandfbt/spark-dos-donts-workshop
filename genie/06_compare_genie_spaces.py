@@ -4,16 +4,16 @@
 # environment_version = "5"
 # ///
 # MAGIC %md
-# MAGIC # Notebook 08 · Compare three agents: does curation actually help?
+# MAGIC # Notebook 06 · Compare three agents: does curation actually help?
 # MAGIC
 # MAGIC The proof. We run the **same four questions** against the three agents built earlier, all on the same data, and
 # MAGIC compare accuracy:
 # MAGIC
 # MAGIC | Agent | Built in | What it has |
 # MAGIC |---|---|---|
-# MAGIC | **Baseline** | 03 | Tables only, minimal instructions |
-# MAGIC | **Metric View** | 03b | Two governed metric views (pinned joins + KPI formulas) + example `MEASURE()` SQL |
-# MAGIC | **Knowledge Store** | 04 | Column configs, synonyms, joins, measures, filters, example SQL |
+# MAGIC | **Baseline** | 01 | Tables only, minimal instructions |
+# MAGIC | **Metric View** | 02 | Two governed metric views (pinned joins + KPI formulas) + example `MEASURE()` SQL |
+# MAGIC | **Knowledge Store** | 03 | Column configs, synonyms, joins, measures, filters, example SQL |
 # MAGIC
 # MAGIC **The questions are KPI-by-dimension**, exactly what both curated approaches are built for. Each one hinges on
 # MAGIC something a **blank agent** typically gets wrong:
@@ -32,7 +32,7 @@
 # MAGIC and dealer (e.g. "Brakes revenue at Platinum dealers") is outside every gold table: pair metric views with the
 # MAGIC table-based Knowledge Store agent, and add gold tables when such questions matter.
 # MAGIC
-# MAGIC **Before you start:** run **03** (baseline), **03b** (metric view), **04** (knowledge store). **Compute:** Serverless.
+# MAGIC **Before you start:** run **01** (baseline), **02** (metric view), **03** (knowledge store). **Compute:** Serverless.
 
 # COMMAND ----------
 
@@ -63,7 +63,7 @@ CURATED_ID = _cfg.get(CFG_KEY_CURATED, "")
 METRIC_ID = _cfg.get(CFG_KEY_METRIC_VIEW, "")
 
 if not CURATED_ID:
-    raise RuntimeError("genie_space_id (Knowledge Store agent) not found. Run notebook 04 first.")
+    raise RuntimeError("genie_space_id (Knowledge Store agent) not found. Run notebook 03 first.")
 
 AGENTS = [(name, sid) for name, sid in [
     ("Baseline", BASELINE_ID),
@@ -75,7 +75,7 @@ print("Comparing:")
 for name, sid in AGENTS:
     print(f"  {name:<16} {genie_ui_room_url(sid)}")
 if len(AGENTS) < 3:
-    print("\nNote: run 03 / 03b / 04 to compare all three. Continuing with what exists.")
+    print("\nNote: run 01 / 02 / 03 to compare all three. Continuing with what exists.")
 
 # COMMAND ----------
 
@@ -190,7 +190,7 @@ print("  Both curated agents pin those, so they answer reliably: that is what ea
 # MAGIC %md
 # MAGIC ## Save the run history
 # MAGIC
-# MAGIC Appends the results to `genie_benchmark_runs` in **your** schema so notebook **10** (monitoring) can chart
+# MAGIC Appends the results to `genie_benchmark_runs` in **your** schema so notebook **07** (monitoring) can chart
 # MAGIC pass-rate trends.
 
 # COMMAND ----------
@@ -232,4 +232,4 @@ print(f"Saved {len(rows)} results to {BENCHMARK_RUNS_TABLE}")
 # MAGIC    conventions, or **Update ground truth** if Genie's SQL is equivalent.
 # MAGIC 4. Re-run until green. Target **80%+ before UAT**, higher on clean data.
 # MAGIC
-# MAGIC **Next:** notebook **10**: monitor and improve your agent.
+# MAGIC **Next:** notebook **07**: monitor and improve your agent.

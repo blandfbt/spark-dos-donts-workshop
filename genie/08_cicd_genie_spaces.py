@@ -4,7 +4,7 @@
 # environment_version = "5"
 # ///
 # MAGIC %md
-# MAGIC # Notebook 11 · CI/CD for Genie agents
+# MAGIC # Notebook 08 · CI/CD for Genie agents
 # MAGIC
 # MAGIC **What you'll learn:** how to promote Genie agents across environments (dev → staging → prod) with code, not
 # MAGIC manual clicks.
@@ -18,7 +18,7 @@
 # MAGIC optional**: it's for teams ready to operationalize their agents. The concepts apply whether you use GitHub Actions,
 # MAGIC Azure DevOps or Databricks Asset Bundles.
 # MAGIC
-# MAGIC **Before you start:** run **04** (the Knowledge Store agent). **Compute:** Serverless.
+# MAGIC **Before you start:** run **03** (the Knowledge Store agent). **Compute:** Serverless.
 
 # COMMAND ----------
 
@@ -75,7 +75,7 @@ import copy
 
 GENIE_SPACE_ID = load_config().get(CFG_KEY_CURATED, "")
 if not GENIE_SPACE_ID:
-    raise RuntimeError("genie_space_id not found in genie_workshop_config. Run notebook 04 first.")
+    raise RuntimeError("genie_space_id not found in genie_workshop_config. Run notebook 03 first.")
 print(f"Agent: {GENIE_SPACE_ID}")
 
 # COMMAND ----------
@@ -201,7 +201,7 @@ displayHTML(f'<a href="{_html.escape(demo_url, quote=True)}" target="_blank" rel
 # MAGIC │  1. Checkout repo                           │
 # MAGIC │  2. transform.py (remap dev → prod)         │
 # MAGIC │  3. deploy.py (POST or PATCH)               │
-# MAGIC │  4. Run benchmarks (notebook 08 as a job)   │
+# MAGIC │  4. Run benchmarks (notebook 06 as a job)   │
 # MAGIC │  5. Pass → done. Fail → alert + rollback.   │
 # MAGIC └─────────────────────────────────────────────┘
 # MAGIC ```

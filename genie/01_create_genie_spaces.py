@@ -4,7 +4,7 @@
 # environment_version = "5"
 # ///
 # MAGIC %md
-# MAGIC # Notebook 03 · Create the Baseline Genie agent
+# MAGIC # Notebook 01 · Create the Baseline Genie agent
 # MAGIC
 # MAGIC **What you'll learn:** how to create a Genie agent from Unity Catalog tables: the natural-language interface
 # MAGIC where users ask questions and Genie writes the SQL.
@@ -14,15 +14,15 @@
 # MAGIC
 # MAGIC | Notebook | Agent | What it has |
 # MAGIC |---|---|---|
-# MAGIC | **03 (here)** | **Baseline** | Tables only, minimal instructions: the *before* |
-# MAGIC | **03b** | **Metric View** | Built on governed metric views (semantic layer) |
-# MAGIC | **04** | **Knowledge Store** | Column configs, synonyms, joins, measures, filters, example SQL: the *after* |
+# MAGIC | **01 (here)** | **Baseline** | Tables only, minimal instructions: the *before* |
+# MAGIC | **02** | **Metric View** | Built on governed metric views (semantic layer) |
+# MAGIC | **03** | **Knowledge Store** | Column configs, synonyms, joins, measures, filters, example SQL: the *after* |
 # MAGIC
-# MAGIC Notebook **08** runs the same hard questions against all three and shows the accuracy difference.
+# MAGIC Notebook **06** runs the same hard questions against all three and shows the accuracy difference.
 # MAGIC
 # MAGIC **Why start blank?** So the gain from curation is *measured*, not assumed. A tables-only agent has to guess join
 # MAGIC paths and business formulas (is "margin %" an average of percentages or total margin ÷ total revenue? where does
-# MAGIC a dealer's state live?). You'll watch it struggle in 08, then watch curation fix it.
+# MAGIC a dealer's state live?). You'll watch it struggle in 06, then watch curation fix it.
 # MAGIC
 # MAGIC **The data.** Four tables from the bronze-to-gold lab, prebuilt by your instructor in the shared schema
 # MAGIC (read-only for you):
@@ -69,7 +69,7 @@ warehouse_id = pick_warehouse()
 # MAGIC ## Build a minimal baseline agent
 # MAGIC
 # MAGIC The baseline gets the **four tables** and one short instruction: no measures, joins, synonyms or examples. That
-# MAGIC comes in 03b and 04.
+# MAGIC comes in 02 and 03.
 # MAGIC
 # MAGIC We use the Genie REST API (`/api/2.0/genie/spaces`) with a `serialized_space` (v2) payload.
 # MAGIC `create_or_update_genie_space` (in `genie_helpers`) is **idempotent**: if an agent with the same title already
@@ -86,7 +86,7 @@ tables_config = [{"identifier": t} for t in GENIE_SOURCE_TABLES]
 def build_serialized_baseline():
     """Deliberately minimal: tables + one lean instruction, no curation.
 
-    This is the 'before'. Notebook 04 adds the Knowledge Store that makes an agent trustworthy; here we want to
+    This is the 'before'. Notebook 03 adds the Knowledge Store that makes an agent trustworthy; here we want to
     see how Genie does with almost nothing.
     """
     baseline_instr = (
@@ -113,8 +113,8 @@ for t in GENIE_SOURCE_TABLES:
 # MAGIC %md
 # MAGIC ## Create the baseline agent and save its ID
 # MAGIC
-# MAGIC The ID is stored in **your** `genie_workshop_config` table under `genie_space_id_blank` so notebook **08** can compare
-# MAGIC it against the curated and metric-view agents. `save_config_keys` upserts, so 03 / 03b / 04 don't clobber each other.
+# MAGIC The ID is stored in **your** `genie_workshop_config` table under `genie_space_id_blank` so notebook **06** can compare
+# MAGIC it against the curated and metric-view agents. `save_config_keys` upserts, so 01 / 02 / 03 don't clobber each other.
 
 # COMMAND ----------
 
@@ -137,7 +137,7 @@ print("=" * 70)
 print()
 print('Try asking it: "What was the margin % for Platinum dealers in December 2025?"')
 print("With no curated joins or measures it may average percentages or pick the wrong")
-print("table: exactly the gap 03b and 04 close.")
+print("table: exactly the gap 02 and 03 close.")
 
 # COMMAND ----------
 
@@ -165,7 +165,7 @@ for _r in spark.sql(f"SELECT key, value, space_name FROM {CONFIG_TABLE} ORDER BY
 # MAGIC ## Try these questions
 # MAGIC
 # MAGIC Open your new agent with the link above, then copy/paste any of these. The first six are the **canonical**
-# MAGIC questions we use throughout the workshop: ask the **same** ones of the Metric View (03b) and Knowledge Store (04)
+# MAGIC questions we use throughout the workshop: ask the **same** ones of the Metric View (02) and Knowledge Store (03)
 # MAGIC agents to compare answers.
 # MAGIC
 # MAGIC 1. **What was the total net revenue in December 2025?**
@@ -186,7 +186,7 @@ for _r in spark.sql(f"SELECT key, value, space_name FROM {CONFIG_TABLE} ORDER BY
 # MAGIC
 # MAGIC This is the **baseline** agent (tables only), so watch for it **averaging percentages** (`AVG(margin_pct)`) instead
 # MAGIC of total margin ÷ total net revenue, **averaging daily averages**, not knowing that "Texas" is `state = 'TX'` in the
-# MAGIC dealers table, or not knowing it has to join to that table to get a state at all. Curation in 03b and 04 fixes
+# MAGIC dealers table, or not knowing it has to join to that table to get a state at all. Curation in 02 and 03 fixes
 # MAGIC exactly those.
 
 # COMMAND ----------
@@ -196,7 +196,7 @@ for _r in spark.sql(f"SELECT key, value, space_name FROM {CONFIG_TABLE} ORDER BY
 # MAGIC
 # MAGIC As a consumer of Genie agents, your feedback is critical to keeping the agent curated so it gives you the insights
 # MAGIC you need. Use the 👍 / 👎 buttons on every answer and **request a review** when a response looks wrong or needs a
-# MAGIC second look; the agent's owner sees all of it in the Monitoring tab (notebook 10).
+# MAGIC second look; the agent's owner sees all of it in the Monitoring tab (notebook 07).
 # MAGIC
 # MAGIC 📝 [How to give response feedback in Genie](https://learn.microsoft.com/en-us/azure/databricks/genie-agents/monitor#-response-feedback)
 
@@ -205,8 +205,8 @@ for _r in spark.sql(f"SELECT key, value, space_name FROM {CONFIG_TABLE} ORDER BY
 # MAGIC %md
 # MAGIC ## Next
 # MAGIC
-# MAGIC - **03b · Metric Views:** build a governed semantic layer, then a metric-view-based agent.
-# MAGIC - **04 · Knowledge Store:** curate the tables with column configs, synonyms, joins, measures, filters and example
+# MAGIC - **02 · Metric Views:** build a governed semantic layer, then a metric-view-based agent.
+# MAGIC - **03 · Knowledge Store:** curate the tables with column configs, synonyms, joins, measures, filters and example
 # MAGIC   SQL. This becomes the **primary** agent your users trust.
 # MAGIC
-# MAGIC Then **08** compares Baseline vs. Metric View vs. Knowledge Store head-to-head.
+# MAGIC Then **06** compares Baseline vs. Metric View vs. Knowledge Store head-to-head.

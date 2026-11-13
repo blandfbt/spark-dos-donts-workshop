@@ -4,7 +4,7 @@
 # environment_version = "5"
 # ///
 # MAGIC %md
-# MAGIC # Notebook 10 · Monitor and improve your Genie agent
+# MAGIC # Notebook 07 · Monitor and improve your Genie agent
 # MAGIC
 # MAGIC **What you'll learn:** how to track Genie's accuracy over time, monitor user activity, find the questions that fail,
 # MAGIC and build a continuous improvement loop.
@@ -19,12 +19,12 @@
 # MAGIC | Part | What it shows | Data source |
 # MAGIC |---|---|---|
 # MAGIC | **1** | Genie's built-in Monitoring tab | Genie UI |
-# MAGIC | **2** | Benchmark pass rate over time | `genie_benchmark_runs` in your schema (written by notebook 08) |
+# MAGIC | **2** | Benchmark pass rate over time | `genie_benchmark_runs` in your schema (written by notebook 06) |
 # MAGIC | **3** | User activity and feedback | `system.access.audit` |
 # MAGIC | **4** | Query performance (latency) | `system.query.history` |
 # MAGIC | **5** | Continuous improvement workflow | Best practices |
 # MAGIC
-# MAGIC **Before you start:** run **04** (agents) and **08** (compare) for benchmark data. **Compute:** Serverless.
+# MAGIC **Before you start:** run **03** (agents) and **06** (compare) for benchmark data. **Compute:** Serverless.
 
 # COMMAND ----------
 
@@ -50,7 +50,7 @@ import html
 PRIMARY_SPACE_ID = load_config().get(CFG_KEY_CURATED, "")
 GENIE_SPACE_ID = PRIMARY_SPACE_ID
 if not PRIMARY_SPACE_ID:
-    print("WARNING: genie_space_id not found in genie_workshop_config. Monitoring links will be incomplete. Run notebook 04 first.")
+    print("WARNING: genie_space_id not found in genie_workshop_config. Monitoring links will be incomplete. Run notebook 03 first.")
 
 # COMMAND ----------
 
@@ -88,7 +88,7 @@ displayHTML(
 # MAGIC ## Part 2: Benchmark run history
 # MAGIC
 # MAGIC Benchmark pass rate is the **most objective** measure of Genie accuracy. This reads the `genie_benchmark_runs`
-# MAGIC table that notebook **08** writes to your schema. Track the pass rate over time as you tune instructions and
+# MAGIC table that notebook **06** writes to your schema. Track the pass rate over time as you tune instructions and
 # MAGIC example SQL.
 # MAGIC
 # MAGIC ### 2a. Pass rate by run and agent
@@ -109,7 +109,7 @@ try:
         ORDER BY run_timestamp DESC, run_label
     """))
 except Exception as e:
-    print(f"Run notebook 08 first to create {BENCHMARK_RUNS_TABLE}: {str(e)[:150]}")
+    print(f"Run notebook 06 first to create {BENCHMARK_RUNS_TABLE}: {str(e)[:150]}")
 
 # COMMAND ----------
 
@@ -357,16 +357,16 @@ except Exception as e:
 # MAGIC
 # MAGIC ### Step 3: Re-run benchmarks
 # MAGIC
-# MAGIC After each change, re-run the **Benchmark** tab and notebook **08**. You should see the pass rate improve run by run.
+# MAGIC After each change, re-run the **Benchmark** tab and notebook **06**. You should see the pass rate improve run by run.
 # MAGIC
 # MAGIC ### Step 4: Convert good interactions to example SQL
 # MAGIC
 # MAGIC When users ask great questions that Genie answers correctly, **promote** them: copy the question and SQL from the
-# MAGIC Monitoring tab and add them as a new `example_question_sqls` entry (via the PATCH pattern in notebooks 05 and 11).
+# MAGIC Monitoring tab and add them as a new `example_question_sqls` entry (via the PATCH pattern in notebooks 04 and 08).
 # MAGIC
 # MAGIC ### Step 5: Schedule automated benchmarks
 # MAGIC
-# MAGIC For production agents, schedule notebook **08** as a recurring job (weekly, or after instruction changes) and alert
+# MAGIC For production agents, schedule notebook **06** as a recurring job (weekly, or after instruction changes) and alert
 # MAGIC when the pass rate drops below `ALERT_ON_PASS_RATE_BELOW`.
 
 # COMMAND ----------
