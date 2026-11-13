@@ -22,7 +22,7 @@ participant has their own schema for anything they create; **never write to the 
 | `lab_silver_parts_dim` | one row per part | part_id, part_name, category, list_price, unit_cost |
 
 Silver tables `lab_silver_orders_fact` (order-line grain, with channel and customer) and the 100M-row star
-schema (`sdd_fact_orders`, `dim_*`) also exist in the shared schema but are **not** part of the Genie agents.
+schema (`sdd_fact_orders`, `sdd_dim_*`) also exist in the shared schema but are **not** part of the Genie agents.
 
 ### Key metrics
 
