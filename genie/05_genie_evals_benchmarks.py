@@ -73,7 +73,7 @@ print()
 print("Benchmarks are pushed to ALL THREE agents so you can compare pass rates in the UI:")
 print("  - Baseline + Knowledge Store get the table-based suite (they see the four tables).")
 print("  - Metric View gets a KPI-by-dimension suite scoped to genie_mv_dealer_sales / genie_mv_category_sales.")
-print("After this notebook completes, open the Benchmark tab for each agent and click Start new run.")
+print("After this notebook completes, open the Benchmark tab for each agent and click Run all benchmarks.")
 
 # COMMAND ----------
 
@@ -244,7 +244,7 @@ if METRIC_SPACE_ID:
 else:
     print("Metric View agent id not found: run notebook 03b to include it in the comparison.")
 
-print("\nBenchmarks pushed. Open the Benchmark tab for each agent and click Start new run:")
+print("\nBenchmarks pushed. Open the Benchmark tab for each agent and click Run all benchmarks:")
 print(f"  Knowledge Store: {genie_ui_room_url(PRIMARY_SPACE_ID)}")
 if METRIC_SPACE_ID:
     print(f"  Metric View:     {genie_ui_room_url(METRIC_SPACE_ID)}")
@@ -263,7 +263,7 @@ if BLANK_SPACE_ID:
 # MAGIC 3. Compares the **full result sets** (not just a single number)
 # MAGIC 4. Shows a SQL diff analysis for any mismatches
 # MAGIC
-# MAGIC **To run benchmarks:** open the agent link below → **Benchmark** tab → **Start new run** → wait for all questions →
+# MAGIC **To run benchmarks:** open the agent link below → **Benchmark** tab → **Run all benchmarks** → wait for all questions →
 # MAGIC review pass/fail; click any failed question to see the failure analysis.
 
 # COMMAND ----------
@@ -271,7 +271,7 @@ if BLANK_SPACE_ID:
 print("Open the Benchmark tab to evaluate:")
 print(f"  {genie_ui_room_url(PRIMARY_SPACE_ID)}")
 print()
-print("Click 'Start new run' and review the results.")
+print("Click 'Run all benchmarks' and review the results.")
 print("Note any failures: we'll fix them in the next steps.")
 
 # COMMAND ----------
@@ -368,7 +368,7 @@ print(f"  {genie_ui_room_url(PRIMARY_SPACE_ID)}")
 # MAGIC %md
 # MAGIC ## Iterate until 100%
 # MAGIC
-# MAGIC 1. **Run benchmarks** in the UI (Benchmark tab, Start new run)
+# MAGIC 1. **Run benchmarks** in the UI (Benchmark tab, Run all benchmarks)
 # MAGIC 2. **Review failures**: click each failed question to see the failure analysis
 # MAGIC 3. **Accept knowledge snippets**: click Review proposed fixes, accept correct patterns
 # MAGIC 4. **Update ground truth**: if the SQL is equivalent but styled differently

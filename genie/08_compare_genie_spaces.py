@@ -227,7 +227,7 @@ print(f"Saved {len(rows)} results to {BENCHMARK_RUNS_TABLE}")
 # MAGIC and is the most accurate evaluator.
 # MAGIC
 # MAGIC 1. Open the **Knowledge Store** and **Metric View** agent links above.
-# MAGIC 2. Click the **Benchmark** tab → **Start new run**.
+# MAGIC 2. Click the **Benchmark** tab → **Run all benchmarks**.
 # MAGIC 3. Review failures; for each, **Review proposed fixes** and accept the knowledge snippets that match your
 # MAGIC    conventions, or **Update ground truth** if Genie's SQL is equivalent.
 # MAGIC 4. Re-run until green. Target **80%+ before UAT**, higher on clean data.
