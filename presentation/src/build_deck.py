@@ -492,7 +492,8 @@ SLIDES = [
                 "<b>Where</b> the work runs: executors or one driver process",
                 "<b>Whether</b> the optimizer can see your intent",
                 "<b>How often</b> the same work is repeated",
-                "<b>How</b> data is laid out and keyed",
+                "<b>Whether</b> you let the platform manage layout (<code>CLUSTER BY AUTO</code>, not <code>partitionBy</code>)",
+                "<b>Which</b> keys you window and join on",
             ]) + """</div>
     </div>
     <div class="codebox">spark.conf.set("spark.executor.memory", "16g")<span class="cm">   # → [CONFIG_NOT_AVAILABLE] on serverless</span></div>""",
