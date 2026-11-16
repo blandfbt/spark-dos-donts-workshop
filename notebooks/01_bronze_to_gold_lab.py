@@ -25,7 +25,7 @@
 # MAGIC | cell | what to do |
 # MAGIC |---|---|
 # MAGIC | 📘 **Example** | run it and read it. It's a complete, working version of the pattern |
-# MAGIC | 🧑‍💻 **Your turn** | write the next piece yourself, in the same language as the example. A **🧞 Genie Code prompt** is there if you want help: open Genie Code (`Cmd/Ctrl + I` in the cell, or the assistant side panel) and paste it |
+# MAGIC | 🧑‍💻 **Your turn** | write the next piece yourself, in the same language as the example. Until you do, the cell raises a **"Your turn"** error, so **Run all** stops at the first exercise you haven't written. A **🧞 Genie Code prompt** is there if you want help: open Genie Code (`Cmd/Ctrl + I` in the cell, or the assistant side panel) and paste it |
 # MAGIC | ✅ **Check** | run it to verify your result. If you're stuck, `reveal("<exercise>")` prints a solution and `catch_up("<exercise>")` builds the result so you can keep going |
 # MAGIC
 # MAGIC Python cells use PySpark; SQL cells start with `%sql`. Both run on the same serverless compute, and
@@ -146,9 +146,9 @@ bronze_orders.printSchema()
 
 # DBTITLE 1,🧑‍💻 Your turn: lab_bronze_dealers_dim (Python)
 # Write your code here: read f"{LAB_RAW}/dealers_csv", add _source_file and _ingested_at,
-# and overwrite the table lab_bronze_dealers_dim.
+# and overwrite the table lab_bronze_dealers_dim. Then delete the next line: until you do, Run all stops here.
+your_turn("bronze_dealers")
 
-pass
 
 # COMMAND ----------
 
@@ -290,10 +290,10 @@ except Exception as e:
 
 # DBTITLE 1,🧑‍💻 Your turn: lab_silver_dealers_dim (SQL)
 # MAGIC %sql
-# MAGIC -- Write your CREATE OR REPLACE TABLE lab_silver_dealers_dim AS SELECT ... statement here,
-# MAGIC -- replacing the placeholder query below.
+# MAGIC -- Replace this whole cell with your CREATE OR REPLACE TABLE lab_silver_dealers_dim AS SELECT ... statement.
+# MAGIC -- Until you do, this cell stops Run all with a "Your turn" error.
 # MAGIC
-# MAGIC SELECT 'Replace this cell with your CREATE OR REPLACE TABLE lab_silver_dealers_dim statement' AS todo
+# MAGIC SELECT your_turn('silver_dealers')
 
 # COMMAND ----------
 
@@ -389,10 +389,10 @@ require("bronze_dealers", "silver_dealers", "silver_parts")
 
 # DBTITLE 1,🧑‍💻 Your turn: lab_gold_category_region_fact (SQL)
 # MAGIC %sql
-# MAGIC -- Write your CREATE OR REPLACE TABLE lab_gold_category_region_fact AS SELECT ... statement here,
-# MAGIC -- replacing the placeholder query below.
+# MAGIC -- Replace this whole cell with your CREATE OR REPLACE TABLE lab_gold_category_region_fact AS SELECT ... statement.
+# MAGIC -- Until you do, this cell stops Run all with a "Your turn" error.
 # MAGIC
-# MAGIC SELECT 'Replace this cell with your CREATE OR REPLACE TABLE lab_gold_category_region_fact statement' AS todo
+# MAGIC SELECT your_turn('gold_category_region')
 
 # COMMAND ----------
 
@@ -451,10 +451,10 @@ check("gold_category_region")
 
 # DBTITLE 1,🧑‍💻 Your turn: answer_top_dealers (SQL)
 # MAGIC %sql
-# MAGIC -- CREATE OR REPLACE TEMP VIEW answer_top_dealers AS
-# MAGIC -- SELECT ...
+# MAGIC -- Replace this whole cell with your CREATE OR REPLACE TEMP VIEW answer_top_dealers AS SELECT ... statement.
+# MAGIC -- Until you do, this cell stops Run all with a "Your turn" error.
 # MAGIC
-# MAGIC SELECT 'Replace this cell with your CREATE OR REPLACE TEMP VIEW answer_top_dealers statement' AS todo
+# MAGIC SELECT your_turn('top_dealers')
 
 # COMMAND ----------
 
@@ -479,10 +479,10 @@ check("top_dealers")
 
 # DBTITLE 1,🧑‍💻 Your turn: answer_online_share (SQL)
 # MAGIC %sql
-# MAGIC -- CREATE OR REPLACE TEMP VIEW answer_online_share AS
-# MAGIC -- SELECT ...
+# MAGIC -- Replace this whole cell with your CREATE OR REPLACE TEMP VIEW answer_online_share AS SELECT ... statement.
+# MAGIC -- Until you do, this cell stops Run all with a "Your turn" error.
 # MAGIC
-# MAGIC SELECT 'Replace this cell with your CREATE OR REPLACE TEMP VIEW answer_online_share statement' AS todo
+# MAGIC SELECT your_turn('online_share')
 
 # COMMAND ----------
 
@@ -557,7 +557,10 @@ dashboard_id, dashboard_url = publish_dashboard(datasets, widgets)
 my_datasets = []  # e.g. dataset("categories", "Margin by category", "SELECT ... FROM lab_gold_category_region_fact")
 my_widgets = []   # e.g. bar("b_categories", "categories", "category", "margin_pct", "Margin % by category", x=0, y=17, w=6, color="region")
 
-publish_dashboard(datasets + my_datasets, widgets + my_widgets)
+if not my_datasets or not my_widgets:
+    your_turn("dashboard", "add one dataset to my_datasets and one widget to my_widgets, then rerun this cell")
+else:
+    publish_dashboard(datasets + my_datasets, widgets + my_widgets)
 
 # COMMAND ----------
 

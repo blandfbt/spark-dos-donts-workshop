@@ -26,6 +26,28 @@ LAB_CHECKPOINTS = f"{USER_VOLUME}/_checkpoints/lab"  # Auto Loader state, in you
 LAB_DASHBOARD_NAME = f"Apex Motorsports Parts - December sales ({USER_SCHEMA})"
 
 
+def your_turn(name, task="write your code in this cell and delete the your_turn(...) line"):
+    """Stop Run all at an unfinished exercise, so the error shows up in the cell you still have to write.
+    With auto_solve=true it does nothing: the check cell after it builds the reference solution."""
+    if AUTO_SOLVE:
+        print(f"⏭️ '{name}': auto_solve is on, so the check cell below builds it.")
+        return
+    raise RuntimeError(f"🧑‍💻 Your turn: {task}. Stuck? reveal('{name}') prints a solution you can paste here; "
+                       f"catch_up('{name}') builds the result so you can move on.")
+
+
+# The same stop for the SQL exercise cells: SELECT your_turn('<exercise>'). AUTO_SOLVE is baked in when this runs.
+spark.sql(f"""
+CREATE OR REPLACE TEMPORARY FUNCTION your_turn(name STRING) RETURNS STRING
+RETURN CASE WHEN {str(AUTO_SOLVE).lower()}
+  THEN concat('auto_solve is on, so the check cell below builds ', name)
+  ELSE raise_error(concat('Your turn: replace this whole cell with your SQL statement. Stuck? reveal("', name,
+                          '") prints a solution you can paste here; catch_up("', name,
+                          '") builds the result so you can move on.'))
+END
+""")
+
+
 def reset_lab():
     """Drop every lab_* table and the lab's Auto Loader checkpoints. The raw files are kept."""
     for t in spark.sql(f"SHOW TABLES IN `{CATALOG}`.`{USER_SCHEMA}` LIKE 'lab_*'").collect():
