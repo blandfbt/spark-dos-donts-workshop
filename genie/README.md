@@ -42,7 +42,7 @@ Set `USER_SCHEMA` in `CONFIG` (top of the repo) first. Every notebook starts wit
 | 03 | `03_knowledge_store` | curate the primary agent programmatically |
 | 04 | `04_genie_evals_benchmarks` | push benchmarks to all three agents (12 table-based to Baseline + Knowledge Store, 5 metric-view to Metric View), run them in the UI, fix failures, 4-question smoke test |
 | 05 | `05_genie_code_skills` | install the skill in `skill/` and have Genie Code build an agent and a notebook |
-| 06 | `06_compare_genie_spaces` | the same 4 hard questions on all three agents; saves results to `genie_benchmark_runs` |
+| 06 | `06_compare_genie_spaces` | the same 6 hard questions on all three agents; saves results to `genie_benchmark_runs` |
 | 07 | `07_monitoring_observability` | Monitoring tab, benchmark history, audit logs, query history |
 | 08 | `08_cicd_genie_spaces` *(optional)* | export → remap → deploy an agent |
 

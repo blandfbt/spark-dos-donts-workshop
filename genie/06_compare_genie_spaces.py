@@ -6,7 +6,7 @@
 # MAGIC %md
 # MAGIC # Notebook 06 · Compare three agents: does curation actually help?
 # MAGIC
-# MAGIC The proof. We run the **same four questions** against the three agents built earlier, all on the same data, and
+# MAGIC The proof. We run the **same six questions** against the three agents built earlier, all on the same data, and
 # MAGIC compare accuracy:
 # MAGIC
 # MAGIC | Agent | Built in | What it has |
@@ -24,6 +24,15 @@
 # MAGIC | Q2 | **Margin %**: Brakes, all regions | `AVG(margin_pct)` over six regional rows instead of recomputing from the sums |
 # MAGIC | Q3 | **Net revenue**: dealers in Texas | must join to the dealers dim and know Texas is `'TX'` (and not confuse it with the Southwest region) |
 # MAGIC | Q4 | **Revenue per order**: Midwest, week of Dec 8 | Monday-start week + `SUM / SUM`, not an average of daily averages |
+# MAGIC | Q5 | **Net revenue**: West region | filters `region ILIKE '%West%'`, which also matches Midwest, Southwest and Northwest (about 3.7× too high) |
+# MAGIC | Q6 | **Net revenue**: top-tier dealers | doesn't know "top-tier" means Platinum, filters `dealer_tier = 'top-tier'` and returns 0 |
+# MAGIC
+# MAGIC **Why Q5 and Q6 matter most.** This workshop's data is synthetic and very uniform, so on Q1 to Q4 a wrong
+# MAGIC formula often lands on the right number anyway (the average of the six regional Brakes margins and the weighted
+# MAGIC margin both round to 34.35%). Q5 and Q6 fail by a wide margin when the agent lacks the curated knowledge: the
+# MAGIC exact region values (Knowledge Store: entity matching; Metric View: the instruction) and the business term
+# MAGIC "top-tier" (Knowledge Store: the *Platinum dealers* filter; Metric View: the instruction). No formula can stand
+# MAGIC in for vocabulary the data doesn't contain.
 # MAGIC
 # MAGIC **What to expect:** the Baseline guesses formulas and joins and misses several; the **Metric View** and **Knowledge
 # MAGIC Store** agents both pin those and should score high. Curation is what makes an agent trustworthy.
@@ -108,7 +117,7 @@ print("Scoring function ready.")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## The four KPI-by-dimension questions
+# MAGIC ## The six KPI-by-dimension questions
 # MAGIC
 # MAGIC Ground truth is computed from the shared base tables, so it's independent of any agent's configuration.
 
@@ -133,6 +142,12 @@ questions = [
      "gt": f"SELECT CAST(ROUND(SUM(net_revenue) / NULLIF(SUM(orders), 0), 2) AS DOUBLE) FROM {D} "
            f"WHERE region = 'Midwest' AND CAST(DATE_TRUNC('WEEK', order_date) AS DATE) = DATE'2025-12-08'",
      "short": "Revenue/order - Midwest, wk Dec 8"},
+    {"q": "What was the total net revenue in the West region?",
+     "gt": f"SELECT CAST(ROUND(SUM(net_revenue), 2) AS DOUBLE) FROM {D} WHERE region = 'West'",
+     "short": "Net revenue - West region"},
+    {"q": "What was the net revenue of top-tier dealers?",
+     "gt": f"SELECT CAST(ROUND(SUM(net_revenue), 2) AS DOUBLE) FROM {D} WHERE dealer_tier = 'Platinum'",
+     "short": "Net revenue - top-tier dealers"},
 ]
 print(f"{len(questions)} questions ready.")
 print("Ground truth:")
@@ -182,7 +197,8 @@ for n in ("Metric View", "Knowledge Store"):
         r = all_results[n][1]
         verdict = "beats" if r > base else ("matches" if r == base else "trails")
         print(f"  - {n}: {int(r)}%  ({verdict} Baseline {int(base)}%)")
-print("  The baseline guesses formulas (averaging percentages), joins and state codes, and misses several.")
+print("  The baseline guesses region values ('%West%' matches four regions) and business terms ('top-tier'),")
+print("  and misses those outright; on this uniform data a wrong formula can still land on the right number.")
 print("  Both curated agents pin those, so they answer reliably: that is what earns user trust.")
 
 # COMMAND ----------

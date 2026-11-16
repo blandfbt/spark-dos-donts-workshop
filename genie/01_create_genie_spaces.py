@@ -164,7 +164,7 @@ for _r in spark.sql(f"SELECT key, value, space_name FROM {CONFIG_TABLE} ORDER BY
 # MAGIC %md
 # MAGIC ## Try these questions
 # MAGIC
-# MAGIC Open your new agent with the link above, then copy/paste any of these. The first six are the **canonical**
+# MAGIC Open your new agent with the link above, then copy/paste any of these. The first eight are the **canonical**
 # MAGIC questions we use throughout the workshop: ask the **same** ones of the Metric View (02) and Knowledge Store (03)
 # MAGIC agents to compare answers.
 # MAGIC
@@ -174,20 +174,27 @@ for _r in spark.sql(f"SELECT key, value, space_name FROM {CONFIG_TABLE} ORDER BY
 # MAGIC 4. **What was the net revenue of dealers located in Texas?**
 # MAGIC 5. **Which 5 dealers had the highest net revenue in the Midwest?**
 # MAGIC 6. **What was the average revenue per order by dealer tier?**
+# MAGIC 7. **What was the total net revenue in the West region?**
+# MAGIC 8. **What was the net revenue of top-tier dealers?**
 # MAGIC
 # MAGIC More to explore on your own:
 # MAGIC
-# MAGIC 7. **Which region had the highest margin %?**
-# MAGIC 8. **Show weekly net revenue by region.**
-# MAGIC 9. **Which part category sold the most units in the West?**
-# MAGIC 10. **How many dealers do we have in each state?**
-# MAGIC 11. **Which day of the week has the highest average net revenue?**
-# MAGIC 12. **Compare net revenue and margin for each dealer tier.**
+# MAGIC 9. **Which region had the highest margin %?**
+# MAGIC 10. **Show weekly net revenue by region.**
+# MAGIC 11. **Which part category sold the most units in the West?**
+# MAGIC 12. **How many dealers do we have in each state?**
+# MAGIC 13. **Which day of the week has the highest average net revenue?**
+# MAGIC 14. **Compare net revenue and margin for each dealer tier.**
 # MAGIC
 # MAGIC This is the **baseline** agent (tables only), so watch for it **averaging percentages** (`AVG(margin_pct)`) instead
 # MAGIC of total margin ÷ total net revenue, **averaging daily averages**, not knowing that "Texas" is `state = 'TX'` in the
 # MAGIC dealers table, or not knowing it has to join to that table to get a state at all. Curation in 02 and 03 fixes
 # MAGIC exactly those.
+# MAGIC
+# MAGIC **Questions 7 and 8 are the ones to watch.** The data is synthetic and very uniform, so a wrong formula often still
+# MAGIC lands on the right number. These two fail outright: for 7, the baseline usually filters `region ILIKE '%West%'`,
+# MAGIC which also matches Midwest, Southwest and Northwest (about $3.9B instead of $1.05B). For 8, it doesn't know
+# MAGIC "top-tier" means Platinum and returns 0. Check the SQL Genie wrote, not just the number.
 
 # COMMAND ----------
 
