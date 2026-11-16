@@ -229,11 +229,11 @@ def g_declarative():
         s.box(x, y, 250, 110, a, b, "#E3F4EC", GREEN, NAVY, 23, 12, mono=True)
     s.line(1130, 165, 1160, 165, GREEN, 3)
     s.line(1410, 165, 1440, 165, GREEN, 3)
-    s.rect(880, 270, 810, 170, "#fff", LINE, 14, 2)
-    s.text(1285, 312, "The engine works out", 24, NAVY, 700)
+    s.rect(880, 250, 810, 208, "#fff", LINE, 14, 2)
+    s.text(1285, 290, "The engine works out", 24, NAVY, 700)
     for i, t in enumerate(["dependency order and parallelism", "what is new since last run (incremental)",
                            "checkpoints, retries, schema evolution", "compute sizing (serverless)"]):
-        s.text(910 + (i % 2) * 400, 360 + (i // 2) * 44, "✓ " + t, 21, MUTED, 400, "start")
+        s.text(1060, 330 + i * 36, "✓ " + t, 21, MUTED, 400, "start")
     return s.render()
 
 
@@ -246,19 +246,21 @@ def g_pipeline_lab():
     s.box(740, 130, 360, 100, "silver_orders", "AUTO CDC · latest wins", "#EEF2F4", SLATE, NAVY, 22, 12, mono=True)
     s.box(740, 250, 360, 90, "quarantine_orders", "ST · failed rules", "#FFF4F2", SALMON, BRICK, 22, 12, mono=True)
     s.box(740, 360, 360, 100, "silver_dealers / parts", "MVs", "#EEF2F4", SLATE, NAVY, 22, 12, mono=True)
-    s.box(1190, 120, 340, 110, "gold_daily_sales", "materialized view", "#FFF6D6", YELLOW, NAVY, 24, 12, mono=True)
-    s.box(1190, 290, 340, 110, "gold_category_region", "materialized view", "#FFF6D6", YELLOW, NAVY, 24, 12, mono=True)
+    s.box(1300, 120, 340, 110, "gold_daily_sales", "materialized view", "#FFF6D6", YELLOW, NAVY, 24, 12, mono=True)
+    s.box(1300, 290, 340, 110, "gold_category_region", "materialized view", "#FFF6D6", YELLOW, NAVY, 24, 12, mono=True)
     s.line(250, 210, 320, 130, MUTED, 2.5)
     s.line(250, 250, 320, 340, MUTED, 2.5)
     s.line(660, 120, 740, 60, MUTED, 2.5)
     s.line(660, 140, 740, 295, LAVA, 2.5, True, "6 5")
     s.line(920, 110, 920, 130, MUTED, 2.5)
     s.line(660, 340, 740, 410, MUTED, 2.5)
-    s.line(1100, 180, 1190, 175, MUTED, 2.5)
-    s.line(1100, 190, 1190, 335, MUTED, 2.5)
-    s.line(1100, 410, 1190, 200, MUTED, 2.5)
-    s.line(1100, 420, 1190, 355, MUTED, 2.5)
-    s.text(1360, 445, "all written as lakeflow_* tables in dbx_workshop_dev.<user_schema>", 19, MUTED, 400, "middle", italic=True)
+    # both silver tables feed both gold views: merge into one junction instead of four crossing lines
+    jx, jy = 1200, 290
+    s.line(1100, 180, jx, jy, MUTED, 2.5, False)
+    s.line(1100, 410, jx, jy, MUTED, 2.5, False)
+    s.line(jx, jy, 1300, 190, MUTED, 2.5)
+    s.line(jx, jy, 1300, 330, MUTED, 2.5)
+    s.rect(jx - 7, jy - 7, 14, 14, MUTED, MUTED, 7, 0)
     return s.render()
 
 
@@ -493,7 +495,7 @@ SELECT * FROM STREAM read_files('/Volumes/...', format => 'json')""") + """</div
             "parallel, processes only what's new, and manages checkpoints and retries. This used to be called Delta "
             "Live Tables; the declarative core was contributed to Apache Spark and ships in Spark 4.1."),
 
-    content("Three building blocks", "Choosing between a streaming table, a materialized view and a view",
+    content("The building blocks", "Four kinds of target, and the flows that feed them",
             table(["", "What it is", "Use it for", "Workshop example"], [
                 ["Streaming table", "Append-only, processes each input row once (incremental)",
                  "Ingestion, append-only facts, CDC targets", "<code>lakeflow_bronze_orders_fact</code>"],
@@ -502,15 +504,21 @@ SELECT * FROM STREAM read_files('/Volumes/...', format => 'json')""") + """</div
                 ["View", "Not stored; computed when read", "Intermediate logic you don't need to keep", "an intermediate cleaning step"],
                 ["Flow", "A query that writes into a target: append, AUTO CDC, update",
                  "Many sources into one table; backfills", "<code>lakeflow_silver_orders_dedupe</code>"],
-            ]) + '<p class="note-s">Streaming tables and materialized views also work outside a pipeline: create them in Databricks SQL or a notebook.</p>',
+                ["Sink", "Streams out of the pipeline: external Delta, Kafka, Event Hubs, custom Python",
+                 "Publishing to other systems", "not used in the workshop"],
+            ], "compact") + '<p class="note-s">Streaming tables and materialized views also work outside a pipeline: create them in Databricks SQL or a notebook.</p>',
             "Most of the design work is picking the right object. Streaming tables for anything that only grows: they "
             "read each input row once. Materialized views for anything derived, joins and aggregations: they're "
             "recomputed, incrementally when the engine can. Views for logic you don't need to store. Flows are how "
             "data gets into a target, and you can have several flows into one table, which is how you merge sources or "
-            "backfill. These objects aren't pipeline-only: you can create them straight from the SQL editor."),
+            "backfill. These objects aren't pipeline-only: you can create them straight from the SQL editor. Sinks are the "
+            "way out: a pipeline can stream into an external Delta table, Kafka, Event Hubs, or anything you can reach "
+            "from Python with foreach_batch_sink. They're Python only, only append and update flows can write to them, "
+            "and a full refresh doesn't delete what was already written there."),
 
     content("The bronze-to-gold lab, declaratively", "The same tables you built by hand, as one pipeline",
-            g_pipeline_lab() + bullets([
+            g_pipeline_lab() + '<p class="caption" style="margin:4px 0 18px">All written as <code>lakeflow_*</code> tables in '
+            '<code>dbx_workshop_dev.&lt;user_schema&gt;</code></p>' + bullets([
                 "<b>Bronze</b>: Auto Loader streaming table for orders (Python file); dealers as a batch materialized view",
                 "<b>Silver</b>: expectations drop bad rows, a quarantine table keeps them with a reason, <b>AUTO CDC</b> keeps the latest re-sent order",
                 "<b>Gold</b>: materialized views · all in <code>notebooks/jobs_notebooks/pipeline</code>",
